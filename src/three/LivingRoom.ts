@@ -1,0 +1,515 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import * as THREE from 'three';
+import { createArchitecturalFloorTexture } from './proceduralTextures';
+
+export class LivingRoom {
+  public group: THREE.Group;
+  public orbGroup: THREE.Group;
+  public orbPosition = new THREE.Vector3(0, 0.95, 0.4);
+  public orbLight: THREE.PointLight;
+  public miniFishGroup: THREE.Group;
+  
+  private floorMesh: THREE.Mesh;
+  private causticsOverlayMesh: THREE.Mesh;
+  private miniFishList: { mesh: THREE.Mesh; angle: number; speed: number; radius: number; y: number }[] = [];
+  private orbGlowMesh: THREE.Mesh;
+  private orbOuterGlass: THREE.Mesh;
+
+  constructor() {
+    this.group = new THREE.Group();
+    this.group.name = 'LivingRoom';
+
+    // 1. Floor & Walls
+    const floorGeo = new THREE.PlaneGeometry(16, 16);
+    const floorTex = createArchitecturalFloorTexture();
+    const floorMat = new THREE.MeshStandardMaterial({
+      map: floorTex,
+      roughness: 0.35,
+      metalness: 0.15,
+    });
+    this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    this.floorMesh.rotation.x = -Math.PI / 2;
+    this.floorMesh.position.y = 0;
+    this.floorMesh.receiveShadow = true;
+    this.group.add(this.floorMesh);
+
+    // Caustics projection overlay plane slightly above floor to prevent z-fighting
+    const causticsGeo = new THREE.PlaneGeometry(15.9, 15.9);
+    const causticsMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.causticsOverlayMesh = new THREE.Mesh(causticsGeo, causticsMat);
+    this.causticsOverlayMesh.rotation.x = -Math.PI / 2;
+    this.causticsOverlayMesh.position.y = 0.01;
+    this.group.add(this.causticsOverlayMesh);
+
+    // Architectural modern walls (Left wall and ceiling, leaving North open for floor-to-ceiling glass window)
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x171f2c,
+      roughness: 0.85,
+      metalness: 0.05,
+    });
+
+    // Left Wall
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 6, 14), wallMat);
+    leftWall.position.set(-6, 3, 0);
+    this.group.add(leftWall);
+
+    // Right Wall (set further back so space feels expansive)
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 6, 14), wallMat);
+    rightWall.position.set(6, 3, 0);
+    this.group.add(rightWall);
+
+    // Ceiling
+    const ceilingMat = new THREE.MeshStandardMaterial({
+      color: 0x0f1724,
+      roughness: 0.9,
+    });
+    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), ceilingMat);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = 5.6;
+    this.group.add(ceiling);
+
+    // Floor-to-ceiling window frame structure (North wall opening)
+    this.createWindowFrame();
+
+    // Designer Curved Sofa
+    this.createSofa();
+
+    // Designer Coffee Table
+    this.createCoffeeTable();
+
+    // Miniature City in Glass Orb
+    const orbElements = this.createGlowingOrb();
+    this.orbGroup = orbElements.group;
+    this.orbLight = orbElements.pointLight;
+    this.miniFishGroup = orbElements.fishGroup;
+    this.orbGlowMesh = orbElements.glowMesh;
+    this.orbOuterGlass = orbElements.outerGlass;
+    this.group.add(this.orbGroup);
+
+    // Area rug beneath coffee table
+    this.createAreaRug();
+  }
+
+  private createWindowFrame() {
+    const frameMat = new THREE.MeshStandardMaterial({
+      color: 0x0a111a,
+      roughness: 0.4,
+      metalness: 0.8,
+    });
+
+    const windowGroup = new THREE.Group();
+    windowGroup.position.set(0, 0, -4.8);
+
+    // Top beam
+    const topBeam = new THREE.Mesh(new THREE.BoxGeometry(14, 0.35, 0.35), frameMat);
+    topBeam.position.set(0, 5.4, 0);
+    windowGroup.add(topBeam);
+
+    // Bottom sill
+    const bottomSill = new THREE.Mesh(new THREE.BoxGeometry(14, 0.25, 0.35), frameMat);
+    bottomSill.position.set(0, 0.12, 0);
+    windowGroup.add(bottomSill);
+
+    // Vertical structural mullions (4 large architectural glass panes)
+    const mullionPositions = [-5.5, -2, 2, 5.5];
+    mullionPositions.forEach((x) => {
+      const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.18, 5.4, 0.3), frameMat);
+      mullion.position.set(x, 2.7, 0);
+      windowGroup.add(mullion);
+    });
+
+    // Glass panes with subtle reflection
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x103045,
+      transparent: true,
+      opacity: 0.25,
+      roughness: 0.1,
+      metalness: 0.1,
+      reflectivity: 0.9,
+      depthWrite: false,
+    });
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(12, 5.2), glassMat);
+    glass.position.set(0, 2.7, 0.05);
+    windowGroup.add(glass);
+
+    this.group.add(windowGroup);
+  }
+
+  private createSofa() {
+    const sofaGroup = new THREE.Group();
+    sofaGroup.name = 'Sofa';
+    sofaGroup.position.set(0, 0, 2.4);
+
+    const sofaMat = new THREE.MeshStandardMaterial({
+      color: 0x222e42, // Deep muted modern slate blue
+      roughness: 0.8,
+      metalness: 0.05,
+    });
+
+    const woodLegMat = new THREE.MeshStandardMaterial({
+      color: 0x1f1915,
+      roughness: 0.4,
+      metalness: 0.5,
+    });
+
+    // 1. Sofa Main Base
+    const base = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.35, 1.4), sofaMat);
+    base.position.set(0, 0.35, 0);
+    base.castShadow = true;
+    base.receiveShadow = true;
+    sofaGroup.add(base);
+
+    // 2. Main Seat Cushions (Left and Right)
+    const cushionGeo = new THREE.BoxGeometry(1.65, 0.28, 1.25);
+    const cushionLeft = new THREE.Mesh(cushionGeo, sofaMat);
+    cushionLeft.position.set(-0.85, 0.62, 0.05);
+    cushionLeft.castShadow = true;
+    sofaGroup.add(cushionLeft);
+
+    const cushionRight = new THREE.Mesh(cushionGeo, sofaMat);
+    cushionRight.position.set(0.85, 0.62, 0.05);
+    cushionRight.castShadow = true;
+    sofaGroup.add(cushionRight);
+
+    // 3. Backrest
+    const backrest = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.85, 0.45), sofaMat);
+    backrest.position.set(0, 0.95, 0.52);
+    backrest.castShadow = true;
+    sofaGroup.add(backrest);
+
+    // 4. Armrests
+    const armrestGeo = new THREE.BoxGeometry(0.35, 0.65, 1.4);
+    const leftArm = new THREE.Mesh(armrestGeo, sofaMat);
+    leftArm.position.set(-1.95, 0.65, 0);
+    leftArm.castShadow = true;
+    sofaGroup.add(leftArm);
+
+    const rightArm = new THREE.Mesh(armrestGeo, sofaMat);
+    rightArm.position.set(1.95, 0.65, 0);
+    rightArm.castShadow = true;
+    sofaGroup.add(rightArm);
+
+    // 5. Accent Throw Pillows
+    const pillowMat = new THREE.MeshStandardMaterial({
+      color: 0x145369, // Deep teal accent
+      roughness: 0.85,
+    });
+    const pillowGeo = new THREE.BoxGeometry(0.55, 0.55, 0.2);
+    const pillow1 = new THREE.Mesh(pillowGeo, pillowMat);
+    pillow1.position.set(-1.4, 0.85, 0.35);
+    pillow1.rotation.set(0.1, 0.3, -0.15);
+    sofaGroup.add(pillow1);
+
+    const pillow2 = new THREE.Mesh(pillowGeo, pillowMat);
+    pillow2.position.set(1.4, 0.85, 0.35);
+    pillow2.rotation.set(0.1, -0.3, 0.15);
+    sofaGroup.add(pillow2);
+
+    // 6. Sleek Minimalist Legs
+    const legGeo = new THREE.CylinderGeometry(0.04, 0.025, 0.22, 16);
+    const legCoords = [
+      [-1.6, 0.11, -0.55],
+      [1.6, 0.11, -0.55],
+      [-1.6, 0.11, 0.55],
+      [1.6, 0.11, 0.55],
+    ];
+    legCoords.forEach(([x, y, z]) => {
+      const leg = new THREE.Mesh(legGeo, woodLegMat);
+      leg.position.set(x, y, z);
+      sofaGroup.add(leg);
+    });
+
+    // Contact shadow beneath sofa
+    const sofaShadowGeo = new THREE.PlaneGeometry(3.8, 1.7);
+    const sofaShadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+    });
+    const sofaShadow = new THREE.Mesh(sofaShadowGeo, sofaShadowMat);
+    sofaShadow.rotation.x = -Math.PI / 2;
+    sofaShadow.position.set(0, 0.015, 0);
+    sofaGroup.add(sofaShadow);
+
+    this.group.add(sofaGroup);
+  }
+
+  private createCoffeeTable() {
+    const tableGroup = new THREE.Group();
+    tableGroup.name = 'CoffeeTable';
+    tableGroup.position.set(this.orbPosition.x, 0, this.orbPosition.z);
+
+    // Bronze / brushed graphite metal base
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: 0x242d38,
+      roughness: 0.35,
+      metalness: 0.85,
+    });
+
+    // Heavy round floor base
+    const baseDisk = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.9, 0.05, 32), baseMat);
+    baseDisk.position.y = 0.025;
+    baseDisk.receiveShadow = true;
+    tableGroup.add(baseDisk);
+
+    // Architectural central pedestal stem
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.24, 0.45, 24), baseMat);
+    stem.position.y = 0.27;
+    tableGroup.add(stem);
+
+    // Glass Tabletop (Smoked beveled glass)
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x182836,
+      transparent: true,
+      opacity: 0.55,
+      roughness: 0.15,
+      metalness: 0.1,
+      reflectivity: 0.8,
+      clearcoat: 1.0,
+      depthWrite: false,
+    });
+    const tabletop = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, 0.04, 48), glassMat);
+    tabletop.position.y = 0.52;
+    tabletop.receiveShadow = true;
+    tableGroup.add(tabletop);
+
+    // Metallic trim ring around glass
+    const rimMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      roughness: 0.25,
+      metalness: 0.9,
+    });
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.018, 16, 48), rimMat);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.52;
+    tableGroup.add(rim);
+
+    // Table contact shadow
+    const tableShadowGeo = new THREE.CircleGeometry(1.3, 32);
+    const tableShadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+    });
+    const tableShadow = new THREE.Mesh(tableShadowGeo, tableShadowMat);
+    tableShadow.rotation.x = -Math.PI / 2;
+    tableShadow.position.y = 0.012;
+    tableGroup.add(tableShadow);
+
+    this.group.add(tableGroup);
+  }
+
+  private createAreaRug() {
+    const rugMat = new THREE.MeshStandardMaterial({
+      color: 0x131d2a,
+      roughness: 0.95,
+      metalness: 0.05,
+    });
+    const rug = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 3.8), rugMat);
+    rug.rotation.x = -Math.PI / 2;
+    rug.position.set(0, 0.012, 1.3);
+    rug.receiveShadow = true;
+    this.group.add(rug);
+  }
+
+  private createGlowingOrb() {
+    const orbRoot = new THREE.Group();
+    orbRoot.name = 'PhysicalGlowingOrb';
+    orbRoot.position.copy(this.orbPosition);
+
+    // 1. Sculptural brass / dark chrome ring pedestal
+    const pedestalMat = new THREE.MeshStandardMaterial({
+      color: 0x1e2d3d,
+      roughness: 0.25,
+      metalness: 0.9,
+    });
+    const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.08, 32), pedestalMat);
+    pedestal.position.y = -0.38;
+    orbRoot.add(pedestal);
+
+    const pedestalRing = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.015, 16, 32), pedestalMat);
+    pedestalRing.rotation.x = Math.PI / 2;
+    pedestalRing.position.y = -0.34;
+    orbRoot.add(pedestalRing);
+
+    // 2. Miniature Underwater City Base inside orb
+    const seabedMat = new THREE.MeshStandardMaterial({
+      color: 0x0d283c,
+      roughness: 0.8,
+    });
+    const seabed = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.06, 24), seabedMat);
+    seabed.position.y = -0.32;
+    orbRoot.add(seabed);
+
+    // 3. Miniature Crystalline Buildings
+    const bldgMat = new THREE.MeshPhysicalMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.6,
+      roughness: 0.2,
+      metalness: 0.8,
+      transparent: true,
+      opacity: 0.9,
+    });
+
+    const miniBldgGroup = new THREE.Group();
+    // Central miniature spire
+    const spireGeo = new THREE.ConeGeometry(0.06, 0.42, 8);
+    const mainSpire = new THREE.Mesh(spireGeo, bldgMat);
+    mainSpire.position.set(0, -0.09, 0);
+    miniBldgGroup.add(mainSpire);
+
+    // Surrounding miniature futuristic highrises
+    const miniPositions = [
+      { x: 0.12, z: 0.08, h: 0.24, w: 0.045 },
+      { x: -0.11, z: 0.09, h: 0.28, w: 0.04 },
+      { x: 0.09, z: -0.12, h: 0.22, w: 0.05 },
+      { x: -0.13, z: -0.07, h: 0.31, w: 0.04 },
+      { x: 0.0, z: 0.16, h: 0.18, w: 0.035 },
+      { x: -0.02, z: -0.17, h: 0.20, w: 0.04 },
+    ];
+
+    miniPositions.forEach((pos) => {
+      const bldg = new THREE.Mesh(new THREE.BoxGeometry(pos.w, pos.h, pos.w), bldgMat);
+      bldg.position.set(pos.x, -0.32 + pos.h / 2, pos.z);
+      miniBldgGroup.add(bldg);
+
+      // Tiny pinnacle antennas
+      const antenna = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.004, 0.004, 0.06, 8),
+        new THREE.MeshBasicMaterial({ color: 0x67e8f9 })
+      );
+      antenna.position.set(pos.x, -0.32 + pos.h + 0.03, pos.z);
+      miniBldgGroup.add(antenna);
+    });
+
+    // Miniature underwater domes
+    const domeMat = new THREE.MeshPhysicalMaterial({
+      color: 0x2dd4bf,
+      emissive: 0x0d9488,
+      emissiveIntensity: 0.4,
+      transparent: true,
+      opacity: 0.7,
+      roughness: 0.1,
+    });
+    const dome1 = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), domeMat);
+    dome1.position.set(0.14, -0.32, -0.04);
+    miniBldgGroup.add(dome1);
+
+    orbRoot.add(miniBldgGroup);
+
+    // 4. Miniature Circling Fish inside the orb
+    const miniFishGroup = new THREE.Group();
+    const fishGeo = new THREE.ConeGeometry(0.016, 0.045, 6);
+    fishGeo.rotateX(Math.PI / 2);
+    const miniFishMat = new THREE.MeshBasicMaterial({
+      color: 0x67e8f9,
+    });
+
+    for (let i = 0; i < 7; i++) {
+      const fishMesh = new THREE.Mesh(fishGeo, miniFishMat);
+      const angle = (i / 7) * Math.PI * 2;
+      const radius = 0.16 + Math.random() * 0.1;
+      const y = -0.22 + Math.random() * 0.28;
+      fishMesh.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+      miniFishGroup.add(fishMesh);
+
+      this.miniFishList.push({
+        mesh: fishMesh,
+        angle,
+        speed: 0.6 + Math.random() * 0.5,
+        radius,
+        y,
+      });
+    }
+    orbRoot.add(miniFishGroup);
+
+    // 5. Inner Bioluminescent Point Light
+    const pointLight = new THREE.PointLight(0x38bdf8, 2.2, 3.5);
+    pointLight.position.set(0, -0.05, 0);
+    orbRoot.add(pointLight);
+
+    // 6. Volumetric Glow Shell
+    const glowGeo = new THREE.SphereGeometry(0.39, 32, 32);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0x0ea5e9,
+      transparent: true,
+      opacity: 0.15,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      depthWrite: false,
+    });
+    const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+    orbRoot.add(glowMesh);
+
+    // 7. Outer Glass Orb Spherical Vessel
+    const glassGeo = new THREE.SphereGeometry(0.42, 48, 48);
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x7dd3fc,
+      roughness: 0.05,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0.45,
+      reflectivity: 0.95,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.05,
+      depthWrite: false,
+    });
+    const outerGlass = new THREE.Mesh(glassGeo, glassMat);
+    outerGlass.castShadow = false;
+    orbRoot.add(outerGlass);
+
+    return {
+      group: orbRoot,
+      pointLight,
+      fishGroup: miniFishGroup,
+      glowMesh,
+      outerGlass,
+    };
+  }
+
+  public setCausticOpacity(opacity: number) {
+    (this.causticsOverlayMesh.material as THREE.MeshBasicMaterial).opacity = opacity;
+  }
+
+  public setCausticMap(texture: THREE.CanvasTexture) {
+    (this.causticsOverlayMesh.material as THREE.MeshBasicMaterial).map = texture;
+    (this.causticsOverlayMesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
+  }
+
+  public setOrbExpansion(progress: number) {
+    // progress: 0 (default miniature) to 1 (full energy expansion)
+    this.orbLight.intensity = 2.2 + progress * 4.0;
+    (this.orbGlowMesh.material as THREE.MeshBasicMaterial).opacity = 0.15 + progress * 0.4;
+    const pulseScale = 1.0 + progress * 0.15;
+    this.orbGlowMesh.scale.set(pulseScale, pulseScale, pulseScale);
+  }
+
+  public update(delta: number, elapsed: number) {
+    // Animate miniature fish inside the orb
+    for (const item of this.miniFishList) {
+      item.angle += item.speed * delta;
+      item.mesh.position.x = Math.cos(item.angle) * item.radius;
+      item.mesh.position.z = Math.sin(item.angle) * item.radius;
+      item.mesh.position.y = item.y + Math.sin(elapsed * 2 + item.angle) * 0.02;
+
+      // Rotate fish towards heading
+      item.mesh.rotation.y = -item.angle + Math.PI / 2;
+    }
+
+    // Gentle pulse of the orb core glow
+    const pulse = Math.sin(elapsed * 1.8) * 0.05;
+    this.orbLight.intensity = 2.2 + pulse;
+  }
+}
