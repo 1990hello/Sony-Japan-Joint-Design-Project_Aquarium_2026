@@ -7,16 +7,41 @@ import * as THREE from 'three';
 import { soundEngine } from '../audio/SoundEngine';
 import { ExperienceMoment } from '../types';
 
-interface FishEntity {
+export type FishPersonality = 'curious' | 'shy' | 'playful' | 'social';
+
+export const FISH_FOLLOW_DURATION = 10.0; // Strictly 10 seconds of following cursor
+export const FISH_DEPARTURE_DURATION = 4.0; // 3 to 5 seconds gradual return transition
+export const FISH_TOTAL_INTERACTION_DURATION = FISH_FOLLOW_DURATION + FISH_DEPARTURE_DURATION; // 14.0s
+
+export interface FishEntity {
   group: THREE.Group;
+  bodyMesh: THREE.Mesh;
   tailMesh: THREE.Mesh;
+  accentMesh: THREE.Mesh;
+  hitProxyMesh?: THREE.Mesh;
   pos: THREE.Vector3;
   vel: THREE.Vector3;
   target: THREE.Vector3;
   speed: number;
+  normalSpeed: number;
   swimCycle: number;
   inRoom: boolean; // allowed inside living room boundary
   isEmergentFish: boolean; // fish that emerges from the orb during State 2
+  personality: FishPersonality;
+
+  // Level 2 Click-to-Select & 10-Second Follow System
+  isSelected: boolean;
+  followTimer: number; // Elapsed time in seconds since click (0 to 14.0s)
+  cursorTarget: THREE.Vector3; // 3D world position of cursor
+  departureTarget: THREE.Vector3; // Waypoint picked at 10.0s for unhurried departure
+  departureInitialized: boolean;
+  pauseTimer: number; // Brief graceful deceleration when clicked
+
+  circleAngle: number;
+  circleRadius: number;
+  circleSpeed: number;
+  circleDir: number; // 1 or -1
+  driftTimer: number; // For calm, occasional slow drifting/pausing
 }
 
 interface JellyfishEntity {
@@ -43,6 +68,13 @@ interface BubbleEntity {
   spawnBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
 }
 
+interface SelectionRipple {
+  mesh: THREE.Mesh;
+  life: number;
+  maxLife: number;
+  active: boolean;
+}
+
 export class MarineLife {
   public group: THREE.Group;
   public fishList: FishEntity[] = [];
@@ -50,6 +82,12 @@ export class MarineLife {
   public bubbleList: BubbleEntity[] = [];
   public bubbleMeshGroup: THREE.Group;
   public leviathanGroup: THREE.Group;
+  
+  // Interactive fish raycasting & selection ripples
+  public fishClickableMeshes: THREE.Object3D[] = [];
+  public fishRaycastMap = new Map<THREE.Object3D, FishEntity>();
+  private ripplePool: SelectionRipple[] = [];
+  private rippleGroup: THREE.Group;
   
   private roomPermeability = 0; // 0: confined to ocean / window; 1: swims freely inside the living room
   private leviathanPos = new THREE.Vector3(-45, 12, -40);
@@ -65,6 +103,11 @@ export class MarineLife {
     this.bubbleMeshGroup.name = 'Bubbles';
     this.group.add(this.bubbleMeshGroup);
 
+    this.rippleGroup = new THREE.Group();
+    this.rippleGroup.name = 'SelectionRipples';
+    this.group.add(this.rippleGroup);
+    this.initRipplePool();
+
     // 1. Create Schools of Bioluminescent Fish
     this.createFishSchool();
 
@@ -79,8 +122,45 @@ export class MarineLife {
     this.group.add(this.leviathanGroup);
   }
 
+  private initRipplePool() {
+    const poolSize = 8;
+    const ringGeo = new THREE.RingGeometry(0.06, 0.14, 32);
+    for (let i = 0; i < poolSize; i++) {
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x67e8f9,
+        transparent: true,
+        opacity: 0.0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const mesh = new THREE.Mesh(ringGeo, ringMat);
+      mesh.visible = false;
+      this.rippleGroup.add(mesh);
+      this.ripplePool.push({
+        mesh,
+        life: 0,
+        maxLife: 0.9,
+        active: false,
+      });
+    }
+  }
+
+  public spawnSelectionRipple(pos: THREE.Vector3) {
+    const item = this.ripplePool.find((r) => !r.active) || this.ripplePool[0];
+    item.active = true;
+    item.life = 0;
+    item.mesh.position.copy(pos);
+    item.mesh.scale.set(0.4, 0.4, 0.4);
+    item.mesh.rotation.set(0, 0, Math.random() * Math.PI);
+    (item.mesh.material as THREE.MeshBasicMaterial).opacity = 0.9;
+    item.mesh.visible = true;
+  }
+
   private createFishSchool() {
-    const fishCount = 28;
+    // Noticeably reduced fish population (approx 46% reduction: 15 fish total)
+    // 7 in living room (spaced widely apart), 8 outside panoramic window across underwater city
+    const fishCount = 15;
     const fishBodyGeo = new THREE.ConeGeometry(0.12, 0.45, 6);
     fishBodyGeo.rotateX(Math.PI / 2);
 
@@ -93,24 +173,58 @@ export class MarineLife {
     fishTailGeo.setAttribute('position', new THREE.BufferAttribute(tailVertices, 3));
     fishTailGeo.computeVertexNormals();
 
-    const fishMat = new THREE.MeshPhysicalMaterial({
-      color: 0x38bdf8,
-      emissive: 0x0284c7,
-      emissiveIntensity: 0.5,
-      roughness: 0.2,
-      metalness: 0.3,
-      clearcoat: 0.8,
-    });
-
-    const tailMat = new THREE.MeshBasicMaterial({
-      color: 0x67e8f9,
-      transparent: true,
-      opacity: 0.85,
-      side: THREE.DoubleSide,
-    });
+    const personalities: FishPersonality[] = ['curious', 'shy', 'playful', 'social'];
 
     for (let i = 0; i < fishCount; i++) {
+      const personality = personalities[i % personalities.length];
       const fishGroup = new THREE.Group();
+      fishGroup.name = `Fish_${personality}_${i}`;
+
+      // Subtle aesthetic variation according to personality
+      let bodyColor = 0x38bdf8;
+      let emissiveColor = 0x0284c7;
+      let accentColor = 0x67e8f9;
+
+      // Substantially reduced base speed (~55-65% reduction for very slow, serene gliding)
+      let baseSpeed = 0.48;
+
+      if (personality === 'curious') {
+        bodyColor = 0x38bdf8;
+        emissiveColor = 0x0284c7;
+        accentColor = 0xa5f3fc; // bright inquisitive cyan-white
+        baseSpeed = 0.52;
+      } else if (personality === 'shy') {
+        bodyColor = 0x2dd4bf; // ethereal emerald-teal
+        emissiveColor = 0x0f766e;
+        accentColor = 0x99f6e4;
+        baseSpeed = 0.42;
+      } else if (personality === 'playful') {
+        bodyColor = 0x0ea5e9; // electric ocean blue
+        emissiveColor = 0x0369a1;
+        accentColor = 0x7dd3fc;
+        baseSpeed = 0.58;
+      } else if (personality === 'social') {
+        bodyColor = 0x38bdf8;
+        emissiveColor = 0x0284c7;
+        accentColor = 0xfde047; // subtle warm golden-bioluminescent flecks
+        baseSpeed = 0.46;
+      }
+
+      const fishMat = new THREE.MeshPhysicalMaterial({
+        color: bodyColor,
+        emissive: emissiveColor,
+        emissiveIntensity: 0.55,
+        roughness: 0.2,
+        metalness: 0.3,
+        clearcoat: 0.8,
+      });
+
+      const tailMat = new THREE.MeshBasicMaterial({
+        color: accentColor,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
+      });
 
       const bodyMesh = new THREE.Mesh(fishBodyGeo, fishMat);
       fishGroup.add(bodyMesh);
@@ -125,7 +239,7 @@ export class MarineLife {
       accentGeo.rotateX(Math.PI / 2);
       const accentMesh = new THREE.Mesh(
         accentGeo,
-        new THREE.MeshBasicMaterial({ color: 0xa5f3fc })
+        new THREE.MeshBasicMaterial({ color: accentColor })
       );
       accentMesh.position.set(0, 0.04, 0.02);
       fishGroup.add(accentMesh);
@@ -134,31 +248,65 @@ export class MarineLife {
       const scale = 0.55 + Math.random() * 0.45;
       fishGroup.scale.set(scale, scale, scale);
 
-      // Emergent fish (first 4 fish) emerge from the orb during State 2
-      const isEmergentFish = i < 4;
-      const inRoom = i < 14;
+      // 2 emergent fish emerge from the orb in State 2; 7 fish in room, 8 outside in ocean
+      const isEmergentFish = i < 2;
+      const inRoom = i < 7;
+
+      // Spatially distributed placements to prevent crowding around the window and center
+      const inRoomX = ((i % 5) - 2) * 1.5 + (Math.random() - 0.5) * 0.6;
+      const inRoomY = 1.3 + (i % 3) * 0.65 + Math.random() * 0.3;
+      const inRoomZ = ((i % 4) - 1.5) * 1.3 + (Math.random() - 0.5) * 0.4;
+
       const initialPos = isEmergentFish
         ? new THREE.Vector3(0, 0.95, 0.4)
         : new THREE.Vector3(
-            (Math.random() - 0.5) * (inRoom ? 7 : 40),
-            1.2 + Math.random() * (inRoom ? 2.5 : 10),
-            inRoom ? (Math.random() * 4 - 1.5) : (-8 - Math.random() * 30)
+            inRoom ? inRoomX : (Math.random() - 0.5) * 44,
+            inRoom ? inRoomY : 2.5 + Math.random() * 9,
+            inRoom ? inRoomZ : (-12 - Math.random() * 26)
           );
       fishGroup.position.copy(initialPos);
       fishGroup.visible = false; // Initially hidden in State 1
       this.group.add(fishGroup);
 
-      this.fishList.push({
+      // Generous invisible hit proxy sphere for smooth and effortless clicking
+      const hitProxyGeo = new THREE.SphereGeometry(0.32, 8, 6);
+      const hitProxyMat = new THREE.MeshBasicMaterial({ visible: false });
+      const hitProxyMesh = new THREE.Mesh(hitProxyGeo, hitProxyMat);
+      fishGroup.add(hitProxyMesh);
+
+      const fishEntity: FishEntity = {
         group: fishGroup,
+        bodyMesh,
         tailMesh,
+        accentMesh,
+        hitProxyMesh,
         pos: initialPos,
-        vel: new THREE.Vector3((Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.5),
+        vel: new THREE.Vector3((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.04, (Math.random() - 0.5) * 0.12),
         target: new THREE.Vector3().copy(initialPos),
-        speed: 1.4 + Math.random() * 1.2,
+        speed: baseSpeed,
+        normalSpeed: baseSpeed,
         swimCycle: Math.random() * Math.PI * 2,
         inRoom,
         isEmergentFish,
-      });
+        personality,
+        isSelected: false,
+        followTimer: 0,
+        cursorTarget: new THREE.Vector3().copy(initialPos),
+        departureTarget: new THREE.Vector3(),
+        departureInitialized: false,
+        pauseTimer: 0,
+        circleAngle: Math.random() * Math.PI * 2,
+        circleRadius: 0.65 + Math.random() * 0.35,
+        circleSpeed: 0.65 + Math.random() * 0.25,
+        circleDir: Math.random() > 0.5 ? 1 : -1,
+        driftTimer: 0,
+      };
+
+      this.fishList.push(fishEntity);
+      this.fishClickableMeshes.push(bodyMesh);
+      this.fishClickableMeshes.push(hitProxyMesh);
+      this.fishRaycastMap.set(bodyMesh, fishEntity);
+      this.fishRaycastMap.set(hitProxyMesh, fishEntity);
     }
   }
 
@@ -446,10 +594,10 @@ export class MarineLife {
   }
 
   public attractFishTowards(pos: THREE.Vector3) {
-    // Cause several fish to swim curiously towards the activated sculpture
+    // Cause several unselected fish to swim curiously towards the activated sculpture
     let count = 0;
     for (const fish of this.fishList) {
-      if (fish.inRoom && Math.random() > 0.4) {
+      if (fish.inRoom && !fish.isSelected && Math.random() > 0.4) {
         fish.target.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 1.2));
         count++;
         if (count >= 5) break;
@@ -457,15 +605,74 @@ export class MarineLife {
     }
   }
 
-  public reactFishToCursor(rayPos: THREE.Vector3) {
-    // If cursor ray is close to a fish, scatter gently
-    for (const fish of this.fishList) {
-      const dist = fish.group.position.distanceTo(rayPos);
-      if (dist < 1.4) {
-        const away = new THREE.Vector3().subVectors(fish.group.position, rayPos).normalize().multiplyScalar(0.8);
-        fish.vel.add(away);
-      }
+  public clickFish(
+    intersectedObj: THREE.Object3D,
+    cursorWorldPos: THREE.Vector3
+  ): { fish: FishEntity } | null {
+    const fish = this.fishRaycastMap.get(intersectedObj);
+    if (!fish || !fish.group.visible) return null;
+
+    // 1. Subtle bioluminescent selection ripple at fish position
+    this.spawnSelectionRipple(fish.pos);
+
+    // 2. Play gentle pleasant water acoustic chime
+    soundEngine.playRaindrop(Math.floor(Math.random() * 6));
+
+    // 3. Select fish and start 10-second follow countdown
+    fish.isSelected = true;
+    fish.followTimer = 0.0;
+    fish.departureInitialized = false;
+    fish.pauseTimer = 0.28; // Brief graceful acknowledgment pause
+
+    const safeCursorX = THREE.MathUtils.clamp(cursorWorldPos.x, -3.8, 3.8);
+    const safeCursorY = THREE.MathUtils.clamp(cursorWorldPos.y, 0.7, 3.4);
+    const safeCursorZ = THREE.MathUtils.clamp(cursorWorldPos.z, -3.8, 3.0);
+    fish.cursorTarget.set(safeCursorX, safeCursorY, safeCursorZ);
+
+    // Distinct organic circling style when following the user's cursor (graceful, relaxed pace)
+    if (fish.personality === 'curious') {
+      fish.circleRadius = 0.55;
+      fish.circleSpeed = 0.65;
+    } else if (fish.personality === 'playful') {
+      fish.circleRadius = 0.75;
+      fish.circleSpeed = 0.85;
+      fish.circleDir = Math.random() > 0.5 ? 1 : -1;
+    } else if (fish.personality === 'shy') {
+      fish.circleRadius = 0.88;
+      fish.circleSpeed = 0.52;
+    } else if (fish.personality === 'social') {
+      fish.circleRadius = 0.65;
+      fish.circleSpeed = 0.60;
     }
+
+    // Other fish continue swimming independently. No on-screen text or countdown.
+    return { fish };
+  }
+
+  public updateCursorInteraction(
+    cursorWorldPos: THREE.Vector3,
+    _isCursorMoving: boolean,
+    _delta: number
+  ) {
+    const safeCursorX = THREE.MathUtils.clamp(cursorWorldPos.x, -3.8, 3.8);
+    const safeCursorY = THREE.MathUtils.clamp(cursorWorldPos.y, 0.7, 3.4);
+    const safeCursorZ = THREE.MathUtils.clamp(cursorWorldPos.z, -3.8, 3.0);
+
+    for (const fish of this.fishList) {
+      if (!fish.group.visible) continue;
+
+      // Only the selected fish actively tracks the cursor during the 10-second window!
+      // Moving the cursor must NOT extend the 10-second duration.
+      // Once followTimer >= 10.0s, cursor updates are ignored as the fish departs.
+      if (fish.isSelected && fish.followTimer < FISH_FOLLOW_DURATION) {
+        fish.cursorTarget.set(safeCursorX, safeCursorY, safeCursorZ);
+      }
+      // All other fish swim completely independently (zero automatic hover reactions).
+    }
+  }
+
+  public reactFishToCursor(rayPos: THREE.Vector3) {
+    this.updateCursorInteraction(rayPos, false, 0.016);
   }
 
   public triggerLeviathanEncounter() {
@@ -476,10 +683,25 @@ export class MarineLife {
   }
 
   public update(delta: number, elapsed: number) {
-    // 1. Update Fish School Kinematics & Flocking
+    // 0. Update Selection Ripples
+    for (const ripple of this.ripplePool) {
+      if (!ripple.active) continue;
+      ripple.life += delta * 1.6;
+      const progress = ripple.life / ripple.maxLife;
+      if (progress >= 1.0) {
+        ripple.active = false;
+        ripple.mesh.visible = false;
+      } else {
+        const s = 0.4 + progress * 2.8;
+        ripple.mesh.scale.set(s, s, s);
+        (ripple.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (1.0 - progress) * 0.85);
+      }
+    }
+
+    // 1. Update Fish School Kinematics & Flocking with organic swimming
     for (let i = 0; i < this.fishList.length; i++) {
       const fish = this.fishList[i];
-      fish.swimCycle += delta * (fish.speed * 4.5);
+      if (!fish.group.visible) continue;
 
       // If fish is configured for room, but room permeability is low, keep them near window
       let boundsZ = { min: -12, max: 3.5 };
@@ -489,29 +711,170 @@ export class MarineLife {
         boundsZ = { min: -5.0, max: 3.2 };
       }
 
-      // Random wandering targets
-      if (fish.pos.distanceTo(fish.target) < 1.0 || Math.random() < 0.015) {
-        fish.target.set(
-          (Math.random() - 0.5) * (fish.inRoom ? 7.5 : 35),
-          0.8 + Math.random() * (fish.inRoom ? 3.0 : 12),
-          boundsZ.min + Math.random() * (boundsZ.max - boundsZ.min)
-        );
+      if (fish.isSelected) {
+        // Frame-rate independent follow timer
+        fish.followTimer += delta;
+
+        if (fish.followTimer < FISH_FOLLOW_DURATION) {
+          // ==============================================================
+          // PHASE 1: FOLLOW CURSOR (0.0s to 10.0s)
+          // ==============================================================
+          if (fish.pauseTimer > 0) {
+            fish.pauseTimer -= delta;
+            fish.vel.multiplyScalar(0.95); // Gentle acknowledgment pause
+          } else {
+            fish.circleAngle += delta * fish.circleSpeed * fish.circleDir;
+            const distToCursor = fish.pos.distanceTo(fish.cursorTarget);
+
+            if (distToCursor > fish.circleRadius * 1.35) {
+              // Smooth, unhurried cruise towards cursor
+              fish.target.copy(fish.cursorTarget);
+              fish.speed = THREE.MathUtils.damp(
+                fish.speed,
+                fish.normalSpeed * (distToCursor > 2.0 ? 1.25 : 1.1),
+                1.8,
+                delta
+              );
+            } else {
+              // Gracefully circle/cruise around cursor at natural distance
+              const offsetX = Math.cos(fish.circleAngle) * fish.circleRadius;
+              const offsetZ = Math.sin(fish.circleAngle) * fish.circleRadius;
+              const offsetY = Math.sin(fish.circleAngle * 1.6) * 0.12;
+              fish.target.set(
+                fish.cursorTarget.x + offsetX,
+                fish.cursorTarget.y + offsetY,
+                fish.cursorTarget.z + offsetZ
+              );
+              fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 0.95, 1.8, delta);
+            }
+          }
+        } else if (fish.followTimer < FISH_TOTAL_INTERACTION_DURATION) {
+          // ==============================================================
+          // PHASE 2: GRADUAL RETURN OVER 4 SECONDS (10.0s to 14.0s)
+          // ==============================================================
+          // Smoothly transitions away from following over 3-5 seconds.
+          // Gently turns away and resumes independent swimming direction without abruptness.
+          if (!fish.departureInitialized) {
+            fish.departureInitialized = true;
+
+            // Compute natural departure trajectory continuing existing momentum
+            const currentDir = fish.vel.lengthSq() > 0.0001
+              ? fish.vel.clone().normalize()
+              : new THREE.Vector3(Math.cos(fish.circleAngle), 0.05, Math.sin(fish.circleAngle));
+
+            // Soft yaw deviation (±25°) away into open swimming volume
+            const curveAngle = (Math.random() - 0.5) * 0.8;
+            const departureDir = currentDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), curveAngle);
+
+            const destX = THREE.MathUtils.clamp(fish.pos.x + departureDir.x * 4.5, -3.8, 3.8);
+            const destY = THREE.MathUtils.clamp(fish.pos.y + departureDir.y * 1.2 + (Math.random() - 0.5) * 0.6, 1.0, 3.0);
+            const destZ = THREE.MathUtils.clamp(fish.pos.z + departureDir.z * 4.5, boundsZ.min, boundsZ.max);
+            fish.departureTarget.set(destX, destY, destZ);
+          }
+
+          // Departure progress: 0.0 at 10.0s -> 1.0 at 14.0s (exactly 4.0s duration)
+          const departT = Math.min(1.0, (fish.followTimer - FISH_FOLLOW_DURATION) / FISH_DEPARTURE_DURATION);
+          // Smooth cubic ease-in-out S-curve
+          const blend = departT * departT * (3.0 - 2.0 * departT);
+
+          // Calculate where the follow position would be right now
+          fish.circleAngle += delta * fish.circleSpeed * fish.circleDir;
+          const offsetX = Math.cos(fish.circleAngle) * fish.circleRadius;
+          const offsetZ = Math.sin(fish.circleAngle) * fish.circleRadius;
+          const curFollowPos = new THREE.Vector3(
+            fish.cursorTarget.x + offsetX,
+            fish.cursorTarget.y,
+            fish.cursorTarget.z + offsetZ
+          );
+
+          // Seamlessly blend target from follow point to departure target
+          fish.target.lerpVectors(curFollowPos, fish.departureTarget, blend);
+          fish.speed = THREE.MathUtils.lerp(fish.normalSpeed * 1.05, fish.normalSpeed, blend);
+
+        } else {
+          // ==============================================================
+          // PHASE 3: FULL AUTONOMOUS RESUMPTION (>= 14.0s)
+          // ==============================================================
+          fish.isSelected = false;
+          fish.followTimer = 0.0;
+          fish.departureInitialized = false;
+        }
+      } else {
+        // ==============================================================
+        // AUTONOMOUS SWIMMING: Very slow, graceful, calm, and spacious
+        // ==============================================================
+        if (fish.driftTimer > 0) {
+          // Occasional peaceful drift/pause suspended in the water
+          fish.driftTimer -= delta;
+          fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 0.25, 0.8, delta);
+        } else {
+          // Smooth, unhurried cruising
+          fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed, 1.2, delta);
+
+          // Update target only when reached or very rarely (prevents frantic path switching)
+          if (fish.pos.distanceTo(fish.target) < 0.7 || Math.random() < 0.003) {
+            // 35% chance to drift peacefully upon reaching destination
+            if (Math.random() < 0.35) {
+              fish.driftTimer = 2.5 + Math.random() * 3.5;
+            }
+
+            if (fish.inRoom) {
+              // Space out targets in the room, keeping central window view uncluttered
+              const targetX = ((i % 5) - 2) * 1.4 + (Math.random() - 0.5) * 0.8;
+              const targetY = 1.2 + Math.random() * 1.6;
+              const targetZ = -2.8 + Math.random() * 4.6;
+              fish.target.set(targetX, targetY, targetZ);
+            } else {
+              // Expansive slow glide outside through distant underwater city
+              fish.target.set(
+                (Math.random() - 0.5) * 44,
+                2.5 + Math.random() * 9,
+                boundsZ.min + Math.random() * (boundsZ.max - boundsZ.min)
+              );
+            }
+          }
+        }
       }
 
-      // Steer towards target
-      const steer = new THREE.Vector3().subVectors(fish.target, fish.pos).normalize().multiplyScalar(fish.speed * delta);
-      fish.vel.lerp(steer, 0.08);
-      fish.pos.add(fish.vel);
+      // Smooth, viscous steering acceleration & deceleration (like moving through real water)
+      const toTarget = new THREE.Vector3().subVectors(fish.target, fish.pos);
+      const distToTarget = toTarget.length();
+
+      if (distToTarget > 0.08) {
+        const desiredVel = toTarget.normalize().multiplyScalar(fish.speed);
+        fish.vel.lerp(desiredVel, 0.028); // Slower, graceful fluid acceleration
+      } else {
+        fish.vel.multiplyScalar(0.96);
+      }
+
+      // Soft vertical bounding
+      if (fish.inRoom && this.roomPermeability >= 0.5) {
+        if (fish.pos.y < 0.6) fish.vel.y += delta * 0.35;
+        if (fish.pos.y > 3.6) fish.vel.y -= delta * 0.35;
+      }
+
+      // Position update: delta * 1.05 (substantially reduced from 2.8, achieving the 50-65% speed reduction!)
+      fish.pos.add(new THREE.Vector3().copy(fish.vel).multiplyScalar(delta * 1.05));
       fish.group.position.copy(fish.pos);
 
-      // Orient fish along motion vector
+      // Smooth orientation banking & unhurried turning
       if (fish.vel.lengthSq() > 0.0001) {
         const lookTarget = new THREE.Vector3().addVectors(fish.pos, fish.vel);
+        const currentRot = fish.group.rotation.clone();
         fish.group.lookAt(lookTarget);
+
+        // Gentle, calm banking into turns
+        const bankAngle = THREE.MathUtils.clamp(-fish.vel.x * 0.22, -0.25, 0.25);
+        fish.group.rotation.z = bankAngle;
+
+        // Slow, fluid yaw damping (avoids rapid or robotic turns)
+        fish.group.rotation.y = THREE.MathUtils.damp(currentRot.y, fish.group.rotation.y, 1.6, delta);
       }
 
-      // Sinuous caudal tail waggle
-      fish.tailMesh.rotation.y = Math.sin(fish.swimCycle) * 0.45;
+      // Relaxed, subtle caudal tail flutter
+      const waggleRate = Math.max(0.7, fish.vel.length() * 2.2);
+      fish.swimCycle += delta * waggleRate;
+      fish.tailMesh.rotation.y = Math.sin(fish.swimCycle) * 0.22;
     }
 
     // 2. Update Jellyfish Pulsing & Drifting

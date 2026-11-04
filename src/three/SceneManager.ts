@@ -43,6 +43,11 @@ export class SceneManager {
   private draggedObject: THREE.Group | null = null;
   private dragOffset = new THREE.Vector3();
 
+  // Hand Tracking Raycasting & Pinch Interaction
+  private handRaycaster = new THREE.Raycaster();
+  private handNdc = new THREE.Vector2(-999, -999);
+  private isHandPinchingOrb = false;
+
   // Camera & Moment States
   private currentMoment: ExperienceMoment = 1;
   private cameraMode: CameraPreset = 'cinematic';
@@ -228,7 +233,8 @@ export class SceneManager {
 
     // Cursor proximity reactions
     const worldPoint = cursorRay.origin.clone().add(cursorRay.direction.clone().multiplyScalar(4));
-    this.marineLife.reactFishToCursor(worldPoint);
+    const isMoving = (Math.abs(e.movementX) + Math.abs(e.movementY)) > 0.6;
+    this.marineLife.updateCursorInteraction(worldPoint, isMoving, 0.016);
     this.soundSculptures.checkRibbonProximity(worldPoint, performance.now());
 
     // Check hover cursor
@@ -238,7 +244,9 @@ export class SceneManager {
     } else {
       const scIntersects = this.raycaster.intersectObjects(this.soundSculptures.interactiveMeshes, true);
       const bubbleIntersects = this.raycaster.intersectObjects(this.marineLife.bubbleMeshGroup.children, false);
-      this.container.style.cursor = (scIntersects.length > 0 || bubbleIntersects.length > 0) ? 'pointer' : 'default';
+      const fishIntersects = this.raycaster.intersectObjects(this.marineLife.fishClickableMeshes, false);
+      const isHovering = scIntersects.length > 0 || bubbleIntersects.length > 0 || fishIntersects.length > 0;
+      this.container.style.cursor = isHovering ? 'pointer' : 'default';
     }
   };
 
@@ -249,6 +257,8 @@ export class SceneManager {
     this.isMouseDown = true;
 
     this.raycaster.setFromCamera(this.mouse, this.camera);
+    const cursorRay = this.raycaster.ray;
+    const worldPoint = cursorRay.origin.clone().add(cursorRay.direction.clone().multiplyScalar(4));
 
     // 1. If in Moment 1, clicking the orb enters the experience
     if (this.currentMoment === 1) {
@@ -259,7 +269,20 @@ export class SceneManager {
       }
     }
 
-    // 2. Interactive Sound Sculptures
+    // 2. Interactive Fish Clicking (Level 2: 10-second follow and 3-5s gentle departure)
+    if (this.currentMoment >= 2) {
+      const fishIntersects = this.raycaster.intersectObjects(this.marineLife.fishClickableMeshes, false);
+      if (fishIntersects.length > 0) {
+        const hitFish = fishIntersects[0].object;
+        const result = this.marineLife.clickFish(hitFish, worldPoint);
+        if (result) {
+          // Subtle audio-visual response only; no on-screen text per design requirements
+          return;
+        }
+      }
+    }
+
+    // 3. Interactive Sound Sculptures
     if (this.currentMoment >= 4) {
       const scIntersects = this.raycaster.intersectObjects(this.soundSculptures.interactiveMeshes, true);
       if (scIntersects.length > 0) {
@@ -283,7 +306,7 @@ export class SceneManager {
       }
     }
 
-    // 3. Interactive Bubbles
+    // 4. Interactive Bubbles
     const bubbleIntersects = this.raycaster.intersectObjects(this.marineLife.bubbleMeshGroup.children, false);
     if (bubbleIntersects.length > 0) {
       this.marineLife.popBubbleAt(bubbleIntersects[0].object);
@@ -295,6 +318,64 @@ export class SceneManager {
     this.isMouseDown = false;
     this.draggedObject = null;
   };
+
+  /**
+   * Evaluates hand position for spatial hover states and returns contextual target info
+   */
+  public onHandMove(normX: number, normY: number, _isPinching: boolean): { isOverOrb: boolean } {
+    this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
+    this.handRaycaster.setFromCamera(this.handNdc, this.camera);
+
+    let isOverOrb = false;
+    if (this.currentMoment === 1) {
+      const orbHits = this.handRaycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
+      isOverOrb = orbHits.length > 0;
+      this.livingRoom.setOrbHandHover(isOverOrb);
+    } else {
+      this.livingRoom.setOrbHandHover(false);
+    }
+    return { isOverOrb };
+  }
+
+  /**
+   * Handles user initiating a pinch gesture at normalized screen coordinates
+   */
+  public onHandPinchStart(normX: number, normY: number): boolean {
+    soundEngine.init();
+    this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
+    this.handRaycaster.setFromCamera(this.handNdc, this.camera);
+
+    if (this.currentMoment === 1) {
+      const orbHits = this.handRaycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
+      if (orbHits.length > 0) {
+        this.isHandPinchingOrb = true;
+        this.livingRoom.setOrbHandPinching(true);
+        soundEngine.playPinchFeedback();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Handles user releasing a pinch gesture. If the pinch originated on the orb, advances scene.
+   */
+  public onHandPinchRelease(normX: number, normY: number): boolean {
+    this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
+    this.handRaycaster.setFromCamera(this.handNdc, this.camera);
+
+    if (this.isHandPinchingOrb) {
+      this.isHandPinchingOrb = false;
+      this.livingRoom.setOrbHandPinching(false);
+      this.livingRoom.setOrbHandHover(false);
+
+      if (this.currentMoment === 1) {
+        this.advanceMoment();
+        return true;
+      }
+    }
+    return false;
+  }
 
   public advanceMoment() {
     const next = Math.min(5, this.currentMoment + 1) as ExperienceMoment;
@@ -379,7 +460,7 @@ export class SceneManager {
 
         // Moving underwater caustics spread across furniture and floor
         this.livingRoom.setOrbExpansion(0.7);
-        this.livingRoom.setEmergenceProgress(0.3);
+        this.livingRoom.setEmergenceProgress(0.12); // Very minimal residual emission
         this.livingRoom.setCausticOpacity(0.55);
 
         // Schools of fish swim through the room, bubbles float upwards, jellyfish appear

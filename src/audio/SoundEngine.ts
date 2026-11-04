@@ -277,6 +277,28 @@ export class SoundEngine {
     osc.stop(now + 0.09);
   }
 
+  // --- PINCH AUDIO FEEDBACK (Subtle crystalline confirmation chime) ---
+  public playPinchFeedback() {
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(622.25, now); // Eb5
+    osc.frequency.exponentialRampToValueAtTime(784.00, now + 0.08); // G5 harmonic shimmer
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 0.28);
+  }
+
   // --- RIBBON GLISSANDO (When cursor sweeps across floating ribbons) ---
   public playRibbonGleam(noteIndex = 0) {
     if (!this.ctx || !this.sfxGain || this.isMuted) return;

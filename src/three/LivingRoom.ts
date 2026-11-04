@@ -15,6 +15,7 @@ export class LivingRoom {
   public outdoorSkylineMesh!: THREE.Mesh;
   public emergenceParticles!: THREE.Points;
   public emergenceBubblesGroup!: THREE.Group;
+  public orbPinchRippleMesh!: THREE.Mesh;
   
   private floorMesh: THREE.Mesh;
   private causticsOverlayMesh: THREE.Mesh;
@@ -25,6 +26,9 @@ export class LivingRoom {
   private emergenceVelocities!: Float32Array;
   private emergenceActive = false;
   private emergenceProgress = 0;
+  private orbHandHover = false;
+  private orbHandPinched = false;
+  private pinchRipplePhase = 0;
 
   constructor() {
     this.group = new THREE.Group();
@@ -492,6 +496,23 @@ export class LivingRoom {
     outerGlass.castShadow = false;
     orbRoot.add(outerGlass);
 
+    // 8. Subtle glowing ripple ring around the orb for hand pinch confirmation
+    const rippleGeo = new THREE.RingGeometry(0.44, 0.49, 48);
+    const rippleMat = new THREE.MeshBasicMaterial({
+      color: 0x67e8f9,
+      transparent: true,
+      opacity: 0.0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const pinchRipple = new THREE.Mesh(rippleGeo, rippleMat);
+    pinchRipple.rotation.x = Math.PI / 2;
+    pinchRipple.position.y = -0.15;
+    pinchRipple.visible = false;
+    orbRoot.add(pinchRipple);
+    this.orbPinchRippleMesh = pinchRipple;
+
     return {
       group: orbRoot,
       pointLight,
@@ -501,8 +522,20 @@ export class LivingRoom {
     };
   }
 
+  public setOrbHandHover(isHovering: boolean) {
+    this.orbHandHover = isHovering;
+  }
+
+  public setOrbHandPinching(isPinching: boolean) {
+    this.orbHandPinched = isPinching;
+    if (isPinching) {
+      this.pinchRipplePhase = 0;
+    }
+  }
+
   private createEmergenceSystem() {
-    const count = 240;
+    // Significantly reduced particle count: sparse, controlled, elegant emission (36 particles)
+    const count = 36;
     const geo = new THREE.BufferGeometry();
     this.emergencePositions = new Float32Array(count * 3);
     this.emergenceVelocities = new Float32Array(count * 3);
@@ -512,8 +545,9 @@ export class LivingRoom {
     }
     geo.setAttribute('position', new THREE.BufferAttribute(this.emergencePositions, 3));
 
+    // Delicate, small glowing motes with subtle transparency
     const mat = new THREE.PointsMaterial({
-      size: 0.18,
+      size: 0.065,
       map: createParticleTexture(),
       transparent: true,
       opacity: 0.0,
@@ -523,7 +557,7 @@ export class LivingRoom {
     this.emergenceParticles = new THREE.Points(geo, mat);
     this.group.add(this.emergenceParticles);
 
-    // Small bubbles emerging directly from the orb
+    // Small bubbles emerging directly from the orb (kept completely unchanged)
     this.emergenceBubblesGroup = new THREE.Group();
     const bubbleGeo = new THREE.SphereGeometry(0.04, 12, 12);
     const bubbleMat = new THREE.MeshPhysicalMaterial({
@@ -550,14 +584,15 @@ export class LivingRoom {
 
   private resetEmergenceParticle(i: number) {
     const angle = Math.random() * Math.PI * 2;
-    const r = Math.random() * 0.18;
+    const r = 0.06 + Math.random() * 0.16; // Restrained radius close to orb surface
     this.emergencePositions[i * 3] = this.orbPosition.x + Math.cos(angle) * r;
-    this.emergencePositions[i * 3 + 1] = this.orbPosition.y - 0.08 + Math.random() * 0.2;
+    this.emergencePositions[i * 3 + 1] = this.orbPosition.y - 0.04 + Math.random() * 0.16;
     this.emergencePositions[i * 3 + 2] = this.orbPosition.z + Math.sin(angle) * r;
 
-    this.emergenceVelocities[i * 3] = Math.cos(angle) * 0.35 + (Math.random() - 0.5) * 0.25;
-    this.emergenceVelocities[i * 3 + 1] = 0.35 + Math.random() * 0.45;
-    this.emergenceVelocities[i * 3 + 2] = Math.sin(angle) * 0.35 + (Math.random() - 0.5) * 0.25;
+    // Slow, unhurried, gentle upward drifting velocity
+    this.emergenceVelocities[i * 3] = Math.cos(angle) * 0.08 + (Math.random() - 0.5) * 0.05;
+    this.emergenceVelocities[i * 3 + 1] = 0.12 + Math.random() * 0.15;
+    this.emergenceVelocities[i * 3 + 2] = Math.sin(angle) * 0.08 + (Math.random() - 0.5) * 0.05;
   }
 
   public setOutdoorSkylineOpacity(opacity: number) {
@@ -568,7 +603,8 @@ export class LivingRoom {
   public setEmergenceProgress(progress: number) {
     this.emergenceProgress = progress;
     this.emergenceActive = progress > 0.01;
-    (this.emergenceParticles.material as THREE.PointsMaterial).opacity = Math.min(1.0, progress * 1.5);
+    // Subtle glow and transparency: capped at 0.42 to prevent visual overwhelm
+    (this.emergenceParticles.material as THREE.PointsMaterial).opacity = Math.min(0.42, progress * 0.42);
     this.emergenceBubblesGroup.visible = progress > 0.05;
   }
 
@@ -601,9 +637,30 @@ export class LivingRoom {
       item.mesh.rotation.y = -item.angle + Math.PI / 2;
     }
 
-    // Gentle pulse of the orb core glow
+    // Gentle pulse of the orb core glow + subtle hand pinch/hover feedback
     const pulse = Math.sin(elapsed * 1.8) * 0.05;
-    this.orbLight.intensity = (2.2 + pulse) * (1.0 + this.emergenceProgress * 1.5);
+    let handBoost = 0;
+    if (this.orbHandPinched) {
+      handBoost = 1.4;
+      this.pinchRipplePhase += delta * 4.0;
+      this.orbPinchRippleMesh.visible = true;
+      const s = 1.0 + (Math.sin(this.pinchRipplePhase) + 1) * 0.08;
+      this.orbPinchRippleMesh.scale.set(s, s, s);
+      (this.orbPinchRippleMesh.material as THREE.MeshBasicMaterial).opacity = 0.85;
+    } else if (this.orbHandHover) {
+      handBoost = 0.45;
+      this.orbPinchRippleMesh.visible = true;
+      this.orbPinchRippleMesh.scale.set(1.0, 1.0, 1.0);
+      (this.orbPinchRippleMesh.material as THREE.MeshBasicMaterial).opacity = 0.28;
+    } else {
+      const mat = this.orbPinchRippleMesh.material as THREE.MeshBasicMaterial;
+      if (mat.opacity > 0.01) {
+        mat.opacity = THREE.MathUtils.damp(mat.opacity, 0.0, 4.0, delta);
+      } else {
+        this.orbPinchRippleMesh.visible = false;
+      }
+    }
+    this.orbLight.intensity = (2.2 + pulse + handBoost) * (1.0 + this.emergenceProgress * 1.5);
 
     // Animate emergence particles rising and floating out of the orb
     if (this.emergenceActive) {
@@ -615,15 +672,16 @@ export class LivingRoom {
         this.emergencePositions[i * 3 + 1] += this.emergenceVelocities[i * 3 + 1] * delta;
         this.emergencePositions[i * 3 + 2] += this.emergenceVelocities[i * 3 + 2] * delta;
 
-        // Swirl slightly around y
-        const swirl = delta * 0.8;
+        // Gentle subtle swirl around orb column
+        const swirl = delta * 0.35;
         const dx = this.emergencePositions[i * 3] - this.orbPosition.x;
         const dz = this.emergencePositions[i * 3 + 2] - this.orbPosition.z;
         this.emergencePositions[i * 3] = this.orbPosition.x + dx * Math.cos(swirl) - dz * Math.sin(swirl);
         this.emergencePositions[i * 3 + 2] = this.orbPosition.z + dx * Math.sin(swirl) + dz * Math.cos(swirl);
 
-        // Reset if reached ceiling or far
-        if (this.emergencePositions[i * 3 + 1] > 3.8 || Math.hypot(dx, dz) > 3.2) {
+        // Restrained boundary: rises only ~1.3m above the orb and stays within 0.85m radius
+        // Prevents particles from filling the screen or obscuring room and window
+        if (this.emergencePositions[i * 3 + 1] > 2.25 || Math.hypot(dx, dz) > 0.85) {
           this.resetEmergenceParticle(i);
         }
       }

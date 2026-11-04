@@ -9,9 +9,16 @@ import { ArrowRight, Compass } from 'lucide-react';
 interface IntroOverlayProps {
   visible: boolean;
   onEnter: () => void;
+  onStartHandTracking?: () => void;
+  isHandTrackingActive?: boolean;
 }
 
-export const IntroOverlay: React.FC<IntroOverlayProps> = ({ visible, onEnter }) => {
+export const IntroOverlay: React.FC<IntroOverlayProps> = ({
+  visible,
+  onEnter,
+  onStartHandTracking,
+  isHandTrackingActive = false,
+}) => {
   if (!visible) return null;
 
   return (
@@ -43,16 +50,27 @@ export const IntroOverlay: React.FC<IntroOverlayProps> = ({ visible, onEnter }) 
           </p>
         </div>
 
-        <button
-          onClick={onEnter}
-          className="group relative inline-flex items-center gap-3 px-7 py-3 text-sm font-medium tracking-wider text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-300 rounded-full hover:from-cyan-300 hover:to-teal-200 transition-all duration-300 shadow-[0_0_25px_rgba(34,211,238,0.4)] hover:shadow-[0_0_35px_rgba(34,211,238,0.6)] cursor-pointer"
-        >
-          <span>Enter EXORA</span>
-          <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
-        </button>
+        <div className="flex flex-col items-center gap-3">
+          <button
+            onClick={onEnter}
+            className="group relative inline-flex items-center gap-3 px-7 py-3 text-sm font-medium tracking-wider text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-300 rounded-full hover:from-cyan-300 hover:to-teal-200 transition-all duration-300 shadow-[0_0_25px_rgba(34,211,238,0.4)] hover:shadow-[0_0_35px_rgba(34,211,238,0.6)] cursor-pointer"
+          >
+            <span>Enter EXORA</span>
+            <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
+          </button>
+
+          {onStartHandTracking && !isHandTrackingActive && (
+            <button
+              onClick={onStartHandTracking}
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-mono tracking-wider text-cyan-300/80 hover:text-cyan-200 bg-cyan-950/40 hover:bg-cyan-900/50 border border-cyan-500/25 rounded-md transition-colors cursor-pointer"
+            >
+              <span>Enable Webcam Hand Tracking & Pinch</span>
+            </button>
+          )}
+        </div>
 
         <span className="text-[11px] font-mono-display text-slate-400 tracking-wider">
-          Click the button or touch the glowing orb to begin
+          Click the button, touch the glowing orb, or pinch it with your hand
         </span>
       </div>
 

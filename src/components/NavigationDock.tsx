@@ -22,6 +22,7 @@ import {
   Info,
   Mic,
   MicOff,
+  Hand,
 } from 'lucide-react';
 
 interface NavigationDockProps {
@@ -30,6 +31,9 @@ interface NavigationDockProps {
   cameraPreset: CameraPreset;
   onSelectCamera: (preset: CameraPreset) => void;
   onReset: () => void;
+  isHandTrackingActive?: boolean;
+  onToggleHandTracking?: () => void;
+  handStatus?: string;
 }
 
 export const NavigationDock: React.FC<NavigationDockProps> = ({
@@ -38,6 +42,9 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
   cameraPreset,
   onSelectCamera,
   onReset,
+  isHandTrackingActive = false,
+  onToggleHandTracking,
+  handStatus = 'idle',
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMuted, setIsMuted] = useState(soundEngine.getMuted());
@@ -238,6 +245,33 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
               </button>
             )}
 
+            {/* Hand Tracking Webcam Toggle */}
+            {onToggleHandTracking && (
+              <button
+                onClick={onToggleHandTracking}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono tracking-wider transition-colors cursor-pointer ${
+                  isHandTrackingActive
+                    ? 'bg-cyan-950/80 border-cyan-400 text-cyan-200 [box-shadow:0_0_10px_rgba(34,211,238,0.25)]'
+                    : 'bg-slate-950/60 border-cyan-500/20 text-slate-400 hover:text-cyan-300'
+                }`}
+                title={
+                  isHandTrackingActive
+                    ? 'Hand tracking active (Click to pause)'
+                    : handStatus === 'denied'
+                    ? 'Camera permission denied (Click to retry)'
+                    : 'Enable webcam hand tracking & pinch gestures'
+                }
+              >
+                <Hand className={`w-3.5 h-3.5 ${isHandTrackingActive ? 'text-cyan-400' : 'text-slate-400'}`} />
+                <span className="hidden sm:inline text-[11px]">
+                  {isHandTrackingActive ? 'HAND ON' : 'HAND'}
+                </span>
+                {isHandTrackingActive && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                )}
+              </button>
+            )}
+
             {/* Voice toggle */}
             <button
               onClick={toggleVoiceRecognition}
@@ -385,11 +419,17 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
 
         {/* Tab 4: Design Guidance / Principles */}
         {activeTab === 'guide' && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-300">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs text-slate-300">
+            <div className="bg-slate-950/50 p-2.5 rounded-lg border border-cyan-500/10">
+              <span className="text-cyan-300 font-semibold block mb-1">Interactive Fish Personalities</span>
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Click any fish to connect. <span className="text-cyan-200">Curious</span> investigates, <span className="text-emerald-300">Shy</span> retreats then returns, <span className="text-sky-300">Playful</span> circles in loops, and <span className="text-amber-200">Social</span> gathers companions.
+              </p>
+            </div>
             <div className="bg-slate-950/50 p-2.5 rounded-lg border border-cyan-500/10">
               <span className="text-cyan-300 font-semibold block mb-1">Interaction is Optional</span>
               <p className="text-slate-400 text-[11px] leading-relaxed">
-                EXORA is an emotional sanctuary, not a task. You can explore the sound sculptures or simply sit back and let the marine creatures drift.
+                EXORA is an emotional sanctuary, not a task. You can explore interactive creatures or simply sit back and let the marine world drift.
               </p>
             </div>
             <div className="bg-slate-950/50 p-2.5 rounded-lg border border-cyan-500/10">
@@ -401,7 +441,7 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
             <div className="bg-slate-950/50 p-2.5 rounded-lg border border-cyan-500/10">
               <span className="text-cyan-300 font-semibold block mb-1">Gradual World Emergence</span>
               <p className="text-slate-400 text-[11px] leading-relaxed">
-                The experience starts with a normal living room and outdoor view. The orb awakens, releasing particles, bubbles, and fish into the room before the window opens into the ocean metropolis.
+                Starts with an ordinary living room. The orb awakens, releasing particles, bubbles, and fish into the room before the window opens into the ocean metropolis.
               </p>
             </div>
           </div>

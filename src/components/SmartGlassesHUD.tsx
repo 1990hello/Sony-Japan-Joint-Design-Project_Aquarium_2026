@@ -11,12 +11,18 @@ interface SmartGlassesHUDProps {
   moment: ExperienceMoment;
   visible: boolean;
   onToggle: () => void;
+  isHandTrackingActive?: boolean;
+  isHandDetected?: boolean;
+  isPinching?: boolean;
 }
 
 export const SmartGlassesHUD: React.FC<SmartGlassesHUDProps> = ({
   moment,
   visible,
   onToggle,
+  isHandTrackingActive = false,
+  isHandDetected = false,
+  isPinching = false,
 }) => {
   // Biometric stress level calculation according to moment
   // 1: 82% (work stress), 2: 64%, 3: 45%, 4: 28%, 5: 14% (deep restoration)
@@ -53,8 +59,16 @@ export const SmartGlassesHUD: React.FC<SmartGlassesHUDProps> = ({
             <span className="text-cyan-300/40">|</span>
             <span className="text-cyan-300/70">WAVEGUIDE AR v4.2</span>
           </div>
-          <div className="text-[11px] text-cyan-300/60 pl-4">
-            STAGE 4 // PERSPECTIVE TRANSLATION
+          <div className="text-[11px] text-cyan-300/60 pl-4 flex items-center gap-2">
+            <span>STAGE 4 // PERSPECTIVE TRANSLATION</span>
+            {isHandTrackingActive && (
+              <>
+                <span className="text-cyan-500/40">•</span>
+                <span className={isHandDetected ? (isPinching ? 'text-emerald-400 font-semibold' : 'text-cyan-300') : 'text-slate-400'}>
+                  PINCH SENSOR: {isHandDetected ? (isPinching ? 'PINCHING' : 'HAND DETECTED') : 'READY'}
+                </span>
+              </>
+            )}
           </div>
         </div>
 

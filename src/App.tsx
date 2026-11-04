@@ -8,17 +8,26 @@ import { SceneManager } from './three/SceneManager';
 import { SmartGlassesHUD } from './components/SmartGlassesHUD';
 import { NavigationDock } from './components/NavigationDock';
 import { IntroOverlay } from './components/IntroOverlay';
+import { HandIndicator } from './components/HandIndicator';
+import { HandTracker, HandGestureState, HandTrackerStatus } from './services/HandTracker';
 import { ExperienceMoment, CameraPreset } from './types';
 import { soundEngine } from './audio/SoundEngine';
 
 export default function App() {
   const canvasMountRef = useRef<HTMLDivElement>(null);
   const sceneManagerRef = useRef<SceneManager | null>(null);
+  const handTrackerRef = useRef<HandTracker | null>(null);
 
   const [currentMoment, setCurrentMoment] = useState<ExperienceMoment>(1);
   const [cameraPreset, setCameraPreset] = useState<CameraPreset>('cinematic');
   const [isHUDVisible, setIsHUDVisible] = useState(true);
   const [interactionToast, setInteractionToast] = useState<string | null>(null);
+
+  // Hand tracking states
+  const [handState, setHandState] = useState<HandGestureState | null>(null);
+  const [handStatus, setHandStatus] = useState<HandTrackerStatus>('idle');
+  const [isOverOrb, setIsOverOrb] = useState(false);
+  const [isHandTrackingActive, setIsHandTrackingActive] = useState(false);
 
   const showToast = useCallback((msg: string) => {
     setInteractionToast(msg);
@@ -46,6 +55,53 @@ export default function App() {
       sceneManagerRef.current = null;
       soundEngine.dispose();
     };
+  }, [showToast]);
+
+  // Initialize HandTracker service
+  useEffect(() => {
+    const tracker = new HandTracker({
+      onGestureState: (state) => {
+        setHandState(state);
+        if (state.isHandDetected && sceneManagerRef.current) {
+          const res = sceneManagerRef.current.onHandMove(state.x, state.y, state.isPinching);
+          setIsOverOrb(!!res?.isOverOrb);
+        } else {
+          setIsOverOrb(false);
+        }
+      },
+      onPinchStart: (x, y) => {
+        sceneManagerRef.current?.onHandPinchStart(x, y);
+      },
+      onPinchRelease: (x, y) => {
+        sceneManagerRef.current?.onHandPinchRelease(x, y);
+      },
+      onStatusChange: (status, message) => {
+        setHandStatus(status);
+        setIsHandTrackingActive(status === 'tracking' || status === 'loading_model' || status === 'requesting');
+        if (message && status !== 'tracking') {
+          showToast(message);
+        }
+      },
+    });
+
+    handTrackerRef.current = tracker;
+
+    return () => {
+      tracker.dispose();
+      handTrackerRef.current = null;
+    };
+  }, [showToast]);
+
+  // Handle hand tracking toggle
+  const handleToggleHandTracking = useCallback(async () => {
+    if (!handTrackerRef.current) return;
+    const active = await handTrackerRef.current.toggleTracking();
+    setIsHandTrackingActive(active);
+    if (active) {
+      showToast('Hand tracking enabled. Bring your hand into webcam view.');
+    } else {
+      showToast('Hand tracking paused. Mouse fallback active.');
+    }
   }, [showToast]);
 
   // Handle moment changes
@@ -86,6 +142,8 @@ export default function App() {
         handleSelectMoment(parseInt(e.key, 10) as ExperienceMoment);
       } else if (e.key.toLowerCase() === 'm') {
         soundEngine.toggleMute();
+      } else if (e.key.toLowerCase() === 'h') {
+        handleToggleHandTracking();
       } else if (e.key.toLowerCase() === 'c') {
         const presets: CameraPreset[] = ['cinematic', 'orb', 'window', 'livingroom', 'free'];
         const nextIdx = (presets.indexOf(cameraPreset) + 1) % presets.length;
@@ -95,7 +153,7 @@ export default function App() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [currentMoment, cameraPreset, handleSelectMoment, handleSelectCamera]);
+  }, [currentMoment, cameraPreset, handleSelectMoment, handleSelectCamera, handleToggleHandTracking]);
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#020712] select-none">
@@ -110,12 +168,23 @@ export default function App() {
         moment={currentMoment}
         visible={isHUDVisible}
         onToggle={() => setIsHUDVisible(!isHUDVisible)}
+        isHandTrackingActive={isHandTrackingActive}
+        isHandDetected={!!handState?.isHandDetected}
+        isPinching={!!handState?.isPinching}
+      />
+
+      {/* 2b. Visual Hand Tracking and Pinch Indicator */}
+      <HandIndicator
+        gestureState={handState}
+        isOverOrb={isOverOrb}
       />
 
       {/* 3. Moment 1 Cinematic Discovery Intro Overlay */}
       <IntroOverlay
         visible={currentMoment === 1}
         onEnter={() => handleSelectMoment(2)}
+        onStartHandTracking={handleToggleHandTracking}
+        isHandTrackingActive={isHandTrackingActive}
       />
 
       {/* 4. Moment 4 / 3 Interaction Toast Hint */}
@@ -134,6 +203,9 @@ export default function App() {
         cameraPreset={cameraPreset}
         onSelectCamera={handleSelectCamera}
         onReset={handleReset}
+        isHandTrackingActive={isHandTrackingActive}
+        onToggleHandTracking={handleToggleHandTracking}
+        handStatus={handStatus}
       />
     </main>
   );
