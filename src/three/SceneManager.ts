@@ -101,9 +101,9 @@ export class SceneManager {
 
     // 3. Scene & Camera
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x020712);
-    // Subtle ocean horizon fog
-    this.scene.fog = new THREE.FogExp2(0x031022, 0.024);
+    this.scene.background = new THREE.Color(0x0c101d);
+    // Subtle evening horizon fog for normal room
+    this.scene.fog = new THREE.FogExp2(0x0e1320, 0.008);
 
     this.camera = new THREE.PerspectiveCamera(
       52,
@@ -111,7 +111,7 @@ export class SceneManager {
       0.1,
       250
     );
-    this.camera.position.set(0, 1.35, 1.5);
+    this.camera.position.set(0, 1.25, 1.4);
     this.camera.lookAt(0, 0.95, 0.4);
 
     // 4. Studio Environment Reflection Map
@@ -120,10 +120,10 @@ export class SceneManager {
     pmremGenerator.dispose();
 
     // 5. Lighting Setup
-    this.hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x031226, 0.9);
+    this.hemiLight = new THREE.HemisphereLight(0xe0e7ff, 0x1a1a24, 0.85);
     this.scene.add(this.hemiLight);
 
-    this.keyLight = new THREE.DirectionalLight(0xa5f3fc, 1.8);
+    this.keyLight = new THREE.DirectionalLight(0xfff1e6, 1.6);
     this.keyLight.position.set(4, 8, -6);
     this.keyLight.castShadow = !this.isSoftwareGl;
     if (this.keyLight.castShadow) {
@@ -311,58 +311,117 @@ export class SceneManager {
     }
 
     switch (moment) {
-      case 1: // DISCOVERY
+      case 1: // STATE 1 — THE MINIATURE WORLD INSIDE THE ORB (INITIAL_ORB)
         this.cameraMode = 'orb';
         this.cameraTargetPos.set(0, 1.25, 1.4);
         this.cameraLookAtTarget.set(0, 0.95, 0.4);
+
+        // Windows show ordinary outdoor environment (normal evening city skyline)
+        this.livingRoom.setOutdoorSkylineOpacity(1.0);
+        // NO underwater city outside the windows
         this.underwaterCity.setVisibility(0.0);
-        this.livingRoom.setOrbExpansion(0.0);
+
+        // Living room looks completely normal: floor and furniture have original appearance
         this.livingRoom.setCausticOpacity(0.0);
-        this.marineLife.setRoomPermeability(0.0);
+        this.livingRoom.setOrbExpansion(0.0);
+        this.livingRoom.setEmergenceProgress(0.0);
+
+        // NO fish in room, NO bubbles, NO jellyfish outside the orb
+        this.marineLife.setMarineState(1);
         this.soundSculptures.setVisibility(0.0);
+
+        // Warm cozy interior lighting
+        this.roomAmbientLight.color.setHex(0xffedd5);
+        this.roomAmbientLight.intensity = 0.8;
+        this.hemiLight.color.setHex(0xe0e7ff);
+        this.hemiLight.groundColor.setHex(0x1a1a24);
+        this.hemiLight.intensity = 0.85;
+        this.scene.fog = new THREE.FogExp2(0x0e1320, 0.008);
         break;
 
-      case 2: // IMMERSION (City expands beyond window)
-        this.cameraMode = 'window';
-        this.cameraTargetPos.set(0, 1.85, 3.4);
-        this.cameraLookAtTarget.set(0, 2.4, -12.0);
-        this.underwaterCity.setVisibility(1.0);
+      case 2: // STATE 2 — THE UNDERWATER WORLD EMERGES (WORLD_EXPANSION)
+        // Camera moves back slightly to frame the glowing orb releasing its world
+        this.cameraMode = 'orb';
+        this.cameraTargetPos.set(0, 1.4, 1.7);
+        this.cameraLookAtTarget.set(0, 1.0, 0.4);
+
+        // Windows still show ordinary outdoor view (not yet underwater)
+        this.livingRoom.setOutdoorSkylineOpacity(1.0);
+        this.underwaterCity.setVisibility(0.0);
+
+        // Orb glows brighter, releasing small particles, tiny bubbles, and miniature fish
         this.livingRoom.setOrbExpansion(1.0);
-        this.livingRoom.setCausticOpacity(0.2);
-        this.marineLife.setRoomPermeability(0.15);
+        this.livingRoom.setEmergenceProgress(1.0);
+        this.livingRoom.setCausticOpacity(0.12);
+
+        // Small fish gradually emerge from the orb into the room!
+        this.marineLife.setMarineState(2);
         this.soundSculptures.setVisibility(0.0);
+
+        // Glowing underwater light gradually spreads into the living room
+        this.roomAmbientLight.color.setHex(0xbae6fd);
+        this.roomAmbientLight.intensity = 0.65;
+        this.hemiLight.color.setHex(0x38bdf8);
+        this.hemiLight.groundColor.setHex(0x0a1e38);
+        this.hemiLight.intensity = 0.75;
+        this.scene.fog = new THREE.FogExp2(0x0a1628, 0.015);
         break;
 
-      case 3: // THE WORLD ENTERS THE ROOM
+      case 3: // STATE 3 — THE LIVING ROOM TRANSFORMS (ROOM_TRANSFORMATION)
+        // Camera smoothly glides back to view the transformed room and panoramic window
         this.cameraMode = 'livingroom';
-        this.cameraTargetPos.set(1.4, 1.65, 2.6);
-        this.cameraLookAtTarget.set(-0.3, 1.4, 0.1);
+        this.cameraTargetPos.set(0, 1.75, 3.2);
+        this.cameraLookAtTarget.set(0, 2.2, -4.0);
+
+        // Ordinary outdoor view gradually transforms into the enormous underwater metropolis
+        this.livingRoom.setOutdoorSkylineOpacity(0.0);
         this.underwaterCity.setVisibility(1.0);
-        this.livingRoom.setOrbExpansion(0.6);
+
+        // Moving underwater caustics spread across furniture and floor
+        this.livingRoom.setOrbExpansion(0.7);
+        this.livingRoom.setEmergenceProgress(0.3);
         this.livingRoom.setCausticOpacity(0.55);
-        this.marineLife.setRoomPermeability(1.0);
+
+        // Schools of fish swim through the room, bubbles float upwards, jellyfish appear
+        this.marineLife.setMarineState(3);
         this.soundSculptures.setVisibility(0.15);
+
+        // Deep ocean ambient lighting and ocean depth fog
+        this.roomAmbientLight.color.setHex(0x7dd3fc);
+        this.roomAmbientLight.intensity = 0.45;
+        this.hemiLight.color.setHex(0x38bdf8);
+        this.hemiLight.groundColor.setHex(0x031226);
+        this.hemiLight.intensity = 0.9;
+        this.scene.fog = new THREE.FogExp2(0x031022, 0.024);
         break;
 
-      case 4: // OPTIONAL INTERACTION (Sound Playground)
+      case 4: // STATE 4 — INTERACTIVE UNDERWATER WORLD (INTERACTIVE_WORLD)
         this.cameraMode = 'cinematic';
-        this.cameraTargetPos.set(0, 1.7, 2.1);
+        this.cameraTargetPos.set(0, 1.7, 2.2);
         this.cameraLookAtTarget.set(0, 1.85, -0.7);
+
+        this.livingRoom.setOutdoorSkylineOpacity(0.0);
         this.underwaterCity.setVisibility(1.0);
-        this.livingRoom.setCausticOpacity(0.45);
-        this.marineLife.setRoomPermeability(1.0);
+        this.livingRoom.setCausticOpacity(0.5);
+        this.livingRoom.setEmergenceProgress(0.0);
+
+        // Full autonomous environment + floating sound sculptures
+        this.marineLife.setMarineState(4);
         this.soundSculptures.setVisibility(1.0);
         break;
 
-      case 5: // DAYDREAMING
+      case 5: // STATE 5 — PASSIVE DAYDREAMING (DAYDREAMING)
         this.cameraMode = 'cinematic';
         this.cameraTargetPos.set(-0.8, 1.75, 2.5);
         this.cameraLookAtTarget.set(0.2, 1.9, -4.0);
+
+        this.livingRoom.setOutdoorSkylineOpacity(0.0);
         this.underwaterCity.setVisibility(1.0);
         this.livingRoom.setCausticOpacity(0.5);
-        this.marineLife.setRoomPermeability(1.0);
-        this.soundSculptures.setVisibility(0.8);
-        this.marineLife.triggerLeviathanEncounter();
+        this.livingRoom.setEmergenceProgress(0.0);
+
+        this.marineLife.setMarineState(5);
+        this.soundSculptures.setVisibility(0.85);
         break;
     }
   }

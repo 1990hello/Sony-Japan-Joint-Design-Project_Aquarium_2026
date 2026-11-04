@@ -54,8 +54,7 @@ export default function App() {
     sceneManagerRef.current?.setMoment(moment);
 
     // Update camera preset label to match mode
-    if (moment === 1) setCameraPreset('orb');
-    else if (moment === 2) setCameraPreset('window');
+    if (moment === 1 || moment === 2) setCameraPreset('orb');
     else if (moment === 3) setCameraPreset('livingroom');
     else setCameraPreset('cinematic');
   }, []);

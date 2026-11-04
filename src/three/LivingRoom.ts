@@ -4,7 +4,7 @@
  */
 
 import * as THREE from 'three';
-import { createArchitecturalFloorTexture } from './proceduralTextures';
+import { createArchitecturalFloorTexture, createNormalSkylineTexture, createParticleTexture } from './proceduralTextures';
 
 export class LivingRoom {
   public group: THREE.Group;
@@ -12,12 +12,19 @@ export class LivingRoom {
   public orbPosition = new THREE.Vector3(0, 0.95, 0.4);
   public orbLight: THREE.PointLight;
   public miniFishGroup: THREE.Group;
+  public outdoorSkylineMesh!: THREE.Mesh;
+  public emergenceParticles!: THREE.Points;
+  public emergenceBubblesGroup!: THREE.Group;
   
   private floorMesh: THREE.Mesh;
   private causticsOverlayMesh: THREE.Mesh;
   private miniFishList: { mesh: THREE.Mesh; angle: number; speed: number; radius: number; y: number }[] = [];
-  private orbGlowMesh: THREE.Mesh;
-  private orbOuterGlass: THREE.Mesh;
+  private orbGlowMesh!: THREE.Mesh;
+  private orbOuterGlass!: THREE.Mesh;
+  private emergencePositions!: Float32Array;
+  private emergenceVelocities!: Float32Array;
+  private emergenceActive = false;
+  private emergenceProgress = 0;
 
   constructor() {
     this.group = new THREE.Group();
@@ -97,6 +104,9 @@ export class LivingRoom {
 
     // Area rug beneath coffee table
     this.createAreaRug();
+
+    // Emergence Particle System (releases particles and bubbles from the orb during State 2)
+    this.createEmergenceSystem();
   }
 
   private createWindowFrame() {
@@ -140,6 +150,18 @@ export class LivingRoom {
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(12, 5.2), glassMat);
     glass.position.set(0, 2.7, 0.05);
     windowGroup.add(glass);
+
+    // Ordinary outdoor evening skyline backdrop for State 1
+    const skylineTex = createNormalSkylineTexture();
+    const skylineMat = new THREE.MeshBasicMaterial({
+      map: skylineTex,
+      transparent: true,
+      opacity: 1.0,
+      depthWrite: false,
+    });
+    this.outdoorSkylineMesh = new THREE.Mesh(new THREE.PlaneGeometry(15, 6.8), skylineMat);
+    this.outdoorSkylineMesh.position.set(0, 2.7, -0.15);
+    windowGroup.add(this.outdoorSkylineMesh);
 
     this.group.add(windowGroup);
   }
@@ -479,6 +501,77 @@ export class LivingRoom {
     };
   }
 
+  private createEmergenceSystem() {
+    const count = 240;
+    const geo = new THREE.BufferGeometry();
+    this.emergencePositions = new Float32Array(count * 3);
+    this.emergenceVelocities = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+      this.resetEmergenceParticle(i);
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(this.emergencePositions, 3));
+
+    const mat = new THREE.PointsMaterial({
+      size: 0.18,
+      map: createParticleTexture(),
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.emergenceParticles = new THREE.Points(geo, mat);
+    this.group.add(this.emergenceParticles);
+
+    // Small bubbles emerging directly from the orb
+    this.emergenceBubblesGroup = new THREE.Group();
+    const bubbleGeo = new THREE.SphereGeometry(0.04, 12, 12);
+    const bubbleMat = new THREE.MeshPhysicalMaterial({
+      color: 0x67e8f9,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.4,
+      transparent: true,
+      opacity: 0.65,
+      roughness: 0.1,
+      metalness: 0.1,
+      clearcoat: 1.0,
+      depthWrite: false,
+    });
+
+    for (let b = 0; b < 14; b++) {
+      const bubble = new THREE.Mesh(bubbleGeo, bubbleMat);
+      bubble.position.copy(this.orbPosition);
+      bubble.scale.set(0.001, 0.001, 0.001);
+      this.emergenceBubblesGroup.add(bubble);
+    }
+    this.emergenceBubblesGroup.visible = false;
+    this.group.add(this.emergenceBubblesGroup);
+  }
+
+  private resetEmergenceParticle(i: number) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.random() * 0.18;
+    this.emergencePositions[i * 3] = this.orbPosition.x + Math.cos(angle) * r;
+    this.emergencePositions[i * 3 + 1] = this.orbPosition.y - 0.08 + Math.random() * 0.2;
+    this.emergencePositions[i * 3 + 2] = this.orbPosition.z + Math.sin(angle) * r;
+
+    this.emergenceVelocities[i * 3] = Math.cos(angle) * 0.35 + (Math.random() - 0.5) * 0.25;
+    this.emergenceVelocities[i * 3 + 1] = 0.35 + Math.random() * 0.45;
+    this.emergenceVelocities[i * 3 + 2] = Math.sin(angle) * 0.35 + (Math.random() - 0.5) * 0.25;
+  }
+
+  public setOutdoorSkylineOpacity(opacity: number) {
+    (this.outdoorSkylineMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, Math.min(1, opacity));
+    this.outdoorSkylineMesh.visible = opacity > 0.01;
+  }
+
+  public setEmergenceProgress(progress: number) {
+    this.emergenceProgress = progress;
+    this.emergenceActive = progress > 0.01;
+    (this.emergenceParticles.material as THREE.PointsMaterial).opacity = Math.min(1.0, progress * 1.5);
+    this.emergenceBubblesGroup.visible = progress > 0.05;
+  }
+
   public setCausticOpacity(opacity: number) {
     (this.causticsOverlayMesh.material as THREE.MeshBasicMaterial).opacity = opacity;
   }
@@ -510,6 +603,48 @@ export class LivingRoom {
 
     // Gentle pulse of the orb core glow
     const pulse = Math.sin(elapsed * 1.8) * 0.05;
-    this.orbLight.intensity = 2.2 + pulse;
+    this.orbLight.intensity = (2.2 + pulse) * (1.0 + this.emergenceProgress * 1.5);
+
+    // Animate emergence particles rising and floating out of the orb
+    if (this.emergenceActive) {
+      const posAttr = this.emergenceParticles.geometry.attributes.position as THREE.BufferAttribute;
+      const count = this.emergencePositions.length / 3;
+
+      for (let i = 0; i < count; i++) {
+        this.emergencePositions[i * 3] += this.emergenceVelocities[i * 3] * delta;
+        this.emergencePositions[i * 3 + 1] += this.emergenceVelocities[i * 3 + 1] * delta;
+        this.emergencePositions[i * 3 + 2] += this.emergenceVelocities[i * 3 + 2] * delta;
+
+        // Swirl slightly around y
+        const swirl = delta * 0.8;
+        const dx = this.emergencePositions[i * 3] - this.orbPosition.x;
+        const dz = this.emergencePositions[i * 3 + 2] - this.orbPosition.z;
+        this.emergencePositions[i * 3] = this.orbPosition.x + dx * Math.cos(swirl) - dz * Math.sin(swirl);
+        this.emergencePositions[i * 3 + 2] = this.orbPosition.z + dx * Math.sin(swirl) + dz * Math.cos(swirl);
+
+        // Reset if reached ceiling or far
+        if (this.emergencePositions[i * 3 + 1] > 3.8 || Math.hypot(dx, dz) > 3.2) {
+          this.resetEmergenceParticle(i);
+        }
+      }
+      posAttr.needsUpdate = true;
+
+      // Animate emergence bubbles rising from orb
+      const bubbles = this.emergenceBubblesGroup.children;
+      for (let b = 0; b < bubbles.length; b++) {
+        const bubble = bubbles[b] as THREE.Mesh;
+        const phase = (elapsed * 0.8 + b * 0.45) % 2.5; // cycle 0 to 2.5 seconds
+        const y = this.orbPosition.y + 0.35 + phase * 0.9;
+        const spread = (phase / 2.5) * 0.6;
+        const angle = b * 0.8;
+        bubble.position.set(
+          this.orbPosition.x + Math.cos(angle) * spread,
+          y,
+          this.orbPosition.z + Math.sin(angle) * spread
+        );
+        const s = Math.sin((phase / 2.5) * Math.PI) * (0.8 + (b % 3) * 0.3);
+        bubble.scale.set(s, s, s);
+      }
+    }
   }
 }

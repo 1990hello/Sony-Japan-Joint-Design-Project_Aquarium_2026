@@ -10,6 +10,94 @@ import * as THREE from 'three';
  * 100% code-driven: no external image dependencies, zero 404s.
  */
 
+// Ordinary outdoor evening city skyline texture for State 1
+export function createNormalSkylineTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+
+  // 1. Twilight dusk sky gradient (deep navy to warm dusty dusk horizon)
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, 512);
+  skyGrad.addColorStop(0, '#0c101d');
+  skyGrad.addColorStop(0.5, '#1b233a');
+  skyGrad.addColorStop(0.8, '#322638');
+  skyGrad.addColorStop(1.0, '#4a2f30');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, 1024, 512);
+
+  // Subtle evening stars in upper sky
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  for (let i = 0; i < 40; i++) {
+    const sx = Math.random() * 1024;
+    const sy = Math.random() * 200;
+    ctx.fillRect(sx, sy, 1.2, 1.2);
+  }
+
+  // 2. Distant normal urban city skyline silhouettes
+  const buildings = [
+    { x: 30, w: 70, h: 220 },
+    { x: 110, w: 55, h: 180 },
+    { x: 175, w: 90, h: 280, spire: true },
+    { x: 280, w: 80, h: 210 },
+    { x: 375, w: 110, h: 320, spire: true },
+    { x: 500, w: 75, h: 240 },
+    { x: 590, w: 95, h: 290 },
+    { x: 700, w: 60, h: 190 },
+    { x: 775, w: 100, h: 310, spire: true },
+    { x: 890, w: 85, h: 230 },
+  ];
+
+  // Draw background darker buildings
+  ctx.fillStyle = '#101422';
+  buildings.forEach((b) => {
+    ctx.fillRect(b.x - 15, 512 - b.h * 0.85, b.w * 1.2, b.h * 0.85);
+  });
+
+  // Draw foreground ordinary buildings
+  ctx.fillStyle = '#0a0d18';
+  buildings.forEach((b) => {
+    const yTop = 512 - b.h;
+    ctx.fillRect(b.x, yTop, b.w, b.h);
+
+    if (b.spire) {
+      ctx.beginPath();
+      ctx.moveTo(b.x + b.w / 2 - 2, yTop);
+      ctx.lineTo(b.x + b.w / 2, yTop - 35);
+      ctx.lineTo(b.x + b.w / 2 + 2, yTop);
+      ctx.fillStyle = '#0a0d18';
+      ctx.fill();
+
+      // Red blinking hazard beacon on top
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+      ctx.fillRect(b.x + b.w / 2 - 1.5, yTop - 36, 3, 3);
+    }
+
+    // Warm amber & soft white apartment windows
+    for (let wy = yTop + 12; wy < 500; wy += 14) {
+      for (let wx = b.x + 8; wx < b.x + b.w - 8; wx += 12) {
+        if (Math.sin(wx * 2.1 + wy * 3.4) > 0.05) {
+          const warm = Math.sin(wx + wy) > 0;
+          ctx.fillStyle = warm ? 'rgba(253, 224, 71, 0.65)' : 'rgba(241, 245, 249, 0.55)';
+          ctx.fillRect(wx, wy, 6, 8);
+        }
+      }
+    }
+    ctx.fillStyle = '#0a0d18';
+  });
+
+  // Distant warm street level glow
+  const streetGrad = ctx.createLinearGradient(0, 480, 0, 512);
+  streetGrad.addColorStop(0, 'rgba(251, 146, 60, 0)');
+  streetGrad.addColorStop(1, 'rgba(251, 146, 60, 0.35)');
+  ctx.fillStyle = streetGrad;
+  ctx.fillRect(0, 480, 1024, 32);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 // Soft radial particle texture for marine snow, bioluminescence, and bubbles
 export function createParticleTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');

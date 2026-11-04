@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { soundEngine } from '../audio/SoundEngine';
+import { ExperienceMoment } from '../types';
 
 interface FishEntity {
   group: THREE.Group;
@@ -15,6 +16,7 @@ interface FishEntity {
   speed: number;
   swimCycle: number;
   inRoom: boolean; // allowed inside living room boundary
+  isEmergentFish: boolean; // fish that emerges from the orb during State 2
 }
 
 interface JellyfishEntity {
@@ -132,14 +134,18 @@ export class MarineLife {
       const scale = 0.55 + Math.random() * 0.45;
       fishGroup.scale.set(scale, scale, scale);
 
-      // Start distributed: some in living room range, some in deep ocean
+      // Emergent fish (first 4 fish) emerge from the orb during State 2
+      const isEmergentFish = i < 4;
       const inRoom = i < 14;
-      const initialPos = new THREE.Vector3(
-        (Math.random() - 0.5) * (inRoom ? 7 : 40),
-        1.2 + Math.random() * (inRoom ? 2.5 : 10),
-        inRoom ? (Math.random() * 4 - 1.5) : (-8 - Math.random() * 30)
-      );
+      const initialPos = isEmergentFish
+        ? new THREE.Vector3(0, 0.95, 0.4)
+        : new THREE.Vector3(
+            (Math.random() - 0.5) * (inRoom ? 7 : 40),
+            1.2 + Math.random() * (inRoom ? 2.5 : 10),
+            inRoom ? (Math.random() * 4 - 1.5) : (-8 - Math.random() * 30)
+          );
       fishGroup.position.copy(initialPos);
+      fishGroup.visible = false; // Initially hidden in State 1
       this.group.add(fishGroup);
 
       this.fishList.push({
@@ -151,6 +157,7 @@ export class MarineLife {
         speed: 1.4 + Math.random() * 1.2,
         swimCycle: Math.random() * Math.PI * 2,
         inRoom,
+        isEmergentFish,
       });
     }
   }
@@ -237,6 +244,7 @@ export class MarineLife {
         tentacleNodes.push(nodes);
       }
 
+      jellyGroup.visible = false; // Initially hidden in State 1
       this.group.add(jellyGroup);
 
       this.jellyfishList.push({
@@ -357,6 +365,61 @@ export class MarineLife {
     this.roomPermeability = Math.max(0, Math.min(1, p));
     // Bubble visibility & opacity
     this.bubbleMeshGroup.visible = this.roomPermeability > 0.05;
+  }
+
+  public setMarineState(moment: ExperienceMoment) {
+    if (moment === 1) {
+      // STATE 1 — INITIAL_ORB: Completely clean room, zero fish, zero bubbles, zero jellyfish outside the orb
+      this.fishList.forEach((fish) => {
+        fish.group.visible = false;
+        if (fish.isEmergentFish) {
+          fish.pos.set(0, 0.95, 0.4);
+          fish.target.set(0, 0.95, 0.4);
+          fish.group.position.set(0, 0.95, 0.4);
+        }
+      });
+      this.jellyfishList.forEach((jelly) => {
+        jelly.group.visible = false;
+      });
+      this.bubbleMeshGroup.visible = false;
+      this.leviathanGroup.visible = false;
+      this.roomPermeability = 0;
+    } else if (moment === 2) {
+      // STATE 2 — WORLD_EXPANSION: Only emergent fish emerge from the orb into the room!
+      this.fishList.forEach((fish) => {
+        if (fish.isEmergentFish) {
+          fish.group.visible = true;
+          // Target a gentle orbit out of the orb
+          fish.target.set(
+            (Math.random() - 0.5) * 1.8,
+            1.1 + Math.random() * 0.6,
+            0.4 + (Math.random() - 0.5) * 1.4
+          );
+        } else {
+          fish.group.visible = false;
+        }
+      });
+      this.jellyfishList.forEach((jelly) => {
+        jelly.group.visible = false;
+      });
+      this.bubbleMeshGroup.visible = false; // Orb's emergence bubbles handle state 2
+      this.leviathanGroup.visible = false;
+      this.roomPermeability = 0.2;
+    } else if (moment >= 3) {
+      // STATE 3+ — ROOM_TRANSFORMATION / INTERACTIVE / DAYDREAMING
+      this.fishList.forEach((fish) => {
+        fish.group.visible = true;
+      });
+      this.jellyfishList.forEach((jelly) => {
+        jelly.group.visible = true;
+      });
+      this.bubbleMeshGroup.visible = true;
+      this.roomPermeability = 1.0;
+
+      if (moment === 5) {
+        this.triggerLeviathanEncounter();
+      }
+    }
   }
 
   public popBubbleAt(intersectedMesh: THREE.Object3D): boolean {

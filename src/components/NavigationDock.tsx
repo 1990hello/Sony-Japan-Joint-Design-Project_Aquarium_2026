@@ -399,9 +399,9 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
               </p>
             </div>
             <div className="bg-slate-950/50 p-2.5 rounded-lg border border-cyan-500/10">
-              <span className="text-cyan-300 font-semibold block mb-1">Living Room Permeability</span>
+              <span className="text-cyan-300 font-semibold block mb-1">Gradual World Emergence</span>
               <p className="text-slate-400 text-[11px] leading-relaxed">
-                The world begins inside the table orb, expands past the glass window, and progressively fills the interior living space with caustics and life.
+                The experience starts with a normal living room and outdoor view. The orb awakens, releasing particles, bubbles, and fish into the room before the window opens into the ocean metropolis.
               </p>
             </div>
           </div>
