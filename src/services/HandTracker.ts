@@ -34,12 +34,17 @@ export interface HandGestureState {
   thumbTip: HandLandmarkPoint;
   indexTip: HandLandmarkPoint;
   allLandmarks?: HandLandmarkPoint[];
+  isTwoHandsDetected?: boolean;
+  twoHandsDistance?: number;
+  twoHandsDwellProgress?: number; // 0 to 1
+  secondHandLandmarks?: HandLandmarkPoint[];
 }
 
 export interface HandTrackerCallbacks {
   onGestureState?: (state: HandGestureState) => void;
   onPinchStart?: (normX: number, normY: number) => void;
   onPinchRelease?: (normX: number, normY: number) => void;
+  onTwoHandsTogether?: () => void;
   onStatusChange?: (status: HandTrackerStatus, message?: string) => void;
 }
 
@@ -81,8 +86,18 @@ export class HandTracker {
   private isPinching = false;
   private isHandDetected = false;
 
+  // Two-hand ending gesture state (bringing both hands together)
+  private twoHandsDwellTimer = 0;
+  private twoHandsTriggered = false;
+  private lastFrameTimestamp = 0;
+
   constructor(callbacks: HandTrackerCallbacks = {}) {
     this.callbacks = callbacks;
+  }
+
+  public resetTwoHandsTrigger() {
+    this.twoHandsTriggered = false;
+    this.twoHandsDwellTimer = 0;
   }
 
   public setCallbacks(callbacks: HandTrackerCallbacks) {
@@ -192,7 +207,7 @@ export class HandTracker {
               delegate: 'GPU',
             },
             runningMode: 'VIDEO',
-            numHands: 1,
+            numHands: 2,
             minHandDetectionConfidence: 0.5,
             minHandPresenceConfidence: 0.5,
             minTrackingConfidence: 0.5,
@@ -205,7 +220,7 @@ export class HandTracker {
               delegate: 'CPU',
             },
             runningMode: 'VIDEO',
-            numHands: 1,
+            numHands: 2,
             minHandDetectionConfidence: 0.45,
             minHandPresenceConfidence: 0.45,
             minTrackingConfidence: 0.45,
@@ -260,6 +275,10 @@ export class HandTracker {
   }
 
   private processLandmarks(results: { landmarks?: { x: number; y: number; z: number }[][] }) {
+    const now = performance.now();
+    const dt = this.lastFrameTimestamp > 0 ? Math.min(0.1, (now - this.lastFrameTimestamp) / 1000) : 0.016;
+    this.lastFrameTimestamp = now;
+
     if (!results.landmarks || results.landmarks.length === 0) {
       if (this.isHandDetected) {
         this.isHandDetected = false;
@@ -270,6 +289,7 @@ export class HandTracker {
             this.callbacks.onPinchRelease?.(this.smoothedX, this.smoothedY);
           }
         }
+        this.twoHandsDwellTimer = Math.max(0, this.twoHandsDwellTimer - dt * 2.0);
         this.callbacks.onGestureState?.({
           isHandDetected: false,
           rawX: 0.5,
@@ -282,6 +302,10 @@ export class HandTracker {
           thumbTip: { x: 0, y: 0, z: 0 },
           indexTip: { x: 0, y: 0, z: 0 },
           allLandmarks: [],
+          isTwoHandsDetected: false,
+          twoHandsDistance: undefined,
+          twoHandsDwellProgress: 0,
+          secondHandLandmarks: undefined,
         });
       }
       return;
@@ -335,6 +359,54 @@ export class HandTracker {
       this.callbacks.onPinchRelease?.(posX, posY);
     }
 
+    // Two hands detection & proximity calculation
+    let isTwoHandsDetected = false;
+    let twoHandsDistance: number | undefined = undefined;
+    let secondHandMirrored: { x: number; y: number; z: number }[] | undefined = undefined;
+
+    if (results.landmarks.length >= 2) {
+      isTwoHandsDetected = true;
+      const hand0 = results.landmarks[0];
+      const hand1 = results.landmarks[1];
+
+      // Mirror second hand for rendering
+      secondHandMirrored = hand1.map((lm) => ({
+        x: 1 - lm.x,
+        y: lm.y,
+        z: lm.z || 0,
+      }));
+
+      // Calculate palm midpoints (midpoint between wrist [0] and middle finger MCP [9])
+      const palm0X = (hand0[0].x + hand0[9].x) * 0.5;
+      const palm0Y = (hand0[0].y + hand0[9].y) * 0.5;
+      const palm0Z = ((hand0[0].z || 0) + (hand0[9].z || 0)) * 0.5;
+
+      const palm1X = (hand1[0].x + hand1[9].x) * 0.5;
+      const palm1Y = (hand1[0].y + hand1[9].y) * 0.5;
+      const palm1Z = ((hand1[0].z || 0) + (hand1[9].z || 0)) * 0.5;
+
+      const pdx = palm0X - palm1X;
+      const pdy = palm0Y - palm1Y;
+      const pdz = palm0Z - palm1Z;
+      twoHandsDistance = Math.sqrt(pdx * pdx + pdy * pdy + pdz * pdz);
+
+      // Threshold: palms within ~0.17 normalized screen units
+      const TWO_HANDS_PROXIMITY_THRESHOLD = 0.17;
+      if (twoHandsDistance < TWO_HANDS_PROXIMITY_THRESHOLD) {
+        this.twoHandsDwellTimer += dt;
+        if (this.twoHandsDwellTimer >= 1.0 && !this.twoHandsTriggered) {
+          this.twoHandsTriggered = true;
+          this.callbacks.onTwoHandsTogether?.();
+        }
+      } else {
+        this.twoHandsDwellTimer = Math.max(0, this.twoHandsDwellTimer - dt * 2.0);
+      }
+    } else {
+      this.twoHandsDwellTimer = Math.max(0, this.twoHandsDwellTimer - dt * 2.0);
+    }
+
+    const twoHandsDwellProgress = Math.min(1.0, this.twoHandsDwellTimer / 1.0);
+
     // Transform all landmarks with mirror X for debug overlay rendering
     const allMirrored = hand.map((lm) => ({
       x: 1 - lm.x,
@@ -354,6 +426,10 @@ export class HandTracker {
       thumbTip: { x: 1 - thumb.x, y: thumb.y, z: thumb.z || 0 },
       indexTip: { x: 1 - index.x, y: index.y, z: index.z || 0 },
       allLandmarks: allMirrored,
+      isTwoHandsDetected,
+      twoHandsDistance,
+      twoHandsDwellProgress,
+      secondHandLandmarks: secondHandMirrored,
     };
 
     this.callbacks.onGestureState?.(gestureState);

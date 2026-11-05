@@ -244,6 +244,38 @@ export class SoundEngine {
     osc2.stop(now + 3.8);
   }
 
+  // --- MUSICAL NOTE TRAIL (Spawned behind actively selected fish) ---
+  public playFishNote(stepIndex = 0) {
+    if (!this.ctx || !this.sfxGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    // Pleasant, harmonious pentatonic tune sequence
+    const melodyPattern = [4, 6, 7, 9, 8, 7, 6, 4, 3, 4, 6, 8];
+    const pitchIdx = melodyPattern[Math.abs(stepIndex) % melodyPattern.length];
+    const freq = PENTATONIC_FREQS[Math.min(PENTATONIC_FREQS.length - 1, pitchIdx)];
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(freq * 3.5, now);
+    filter.frequency.exponentialRampToValueAtTime(freq * 1.5, now + 0.8);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.03); // Soft, non-jarring attack
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 1.25);
+  }
+
   // --- COMBINATION CHORD (When sound sculptures are brought together) ---
   public playHarmonicChord() {
     if (!this.ctx || !this.sfxGain || this.isMuted) return;

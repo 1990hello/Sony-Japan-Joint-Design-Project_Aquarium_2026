@@ -18,6 +18,17 @@ export class LivingRoom {
   public orbPinchRippleMesh!: THREE.Mesh;
   public orbHitProxy!: THREE.Mesh;
   
+  // Standing Floor Lamp near the window
+  public floorLampGroup!: THREE.Group;
+  public floorLampLight!: THREE.PointLight;
+  public floorLampPos = new THREE.Vector3(3.8, 1.7, -4.1);
+  private floorLampShadeMesh!: THREE.Mesh;
+  private floorLampBulbMesh!: THREE.Mesh;
+  private floorLampTimer = 0;
+  private floorLampCurrentIntensity = 0.35;
+  private floorLampTargetIntensity = 0.35;
+  private nearFishIds = new Set<number>();
+  
   private floorMesh: THREE.Mesh;
   private causticsOverlayMesh: THREE.Mesh;
   private miniFishList: { mesh: THREE.Mesh; angle: number; speed: number; radius: number; y: number }[] = [];
@@ -109,6 +120,9 @@ export class LivingRoom {
 
     // Area rug beneath coffee table
     this.createAreaRug();
+
+    // Standing Floor Lamp near the panoramic window
+    this.createFloorLamp();
 
     // Emergence Particle System (releases particles and bubbles from the orb during State 2)
     this.createEmergenceSystem();
@@ -348,6 +362,102 @@ export class LivingRoom {
     rug.position.set(0, 0.012, 1.3);
     rug.receiveShadow = true;
     this.group.add(rug);
+  }
+
+  private createFloorLamp() {
+    const lamp = new THREE.Group();
+    lamp.name = 'StandingFloorLamp';
+    lamp.position.set(this.floorLampPos.x, 0, this.floorLampPos.z);
+
+    // 1. Heavy cast blackened bronze base plate
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: 0x1a212b,
+      roughness: 0.35,
+      metalness: 0.85,
+    });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.25, 0.035, 32), baseMat);
+    base.position.y = 0.018;
+    base.receiveShadow = true;
+    lamp.add(base);
+
+    // 2. Slender brushed brass stem
+    const brassMat = new THREE.MeshStandardMaterial({
+      color: 0xd4af37, // Brushed warm brass
+      roughness: 0.25,
+      metalness: 0.9,
+    });
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.78, 16), brassMat);
+    stem.position.y = 0.90;
+    lamp.add(stem);
+
+    // 3. Arched neck fitting
+    const neck = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.015, 12, 24, Math.PI / 2), brassMat);
+    neck.rotation.z = -Math.PI / 2;
+    neck.position.set(-0.06, 1.78, 0);
+    lamp.add(neck);
+
+    // 4. Contemporary conical linen lampshade
+    const shadeGeo = new THREE.CylinderGeometry(0.13, 0.22, 0.28, 32, 1, true);
+    const shadeMat = new THREE.MeshStandardMaterial({
+      color: 0xfff8ee,
+      roughness: 0.85,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+      emissive: 0xffeedd,
+      emissiveIntensity: 0.25,
+    });
+    this.floorLampShadeMesh = new THREE.Mesh(shadeGeo, shadeMat);
+    this.floorLampShadeMesh.position.set(-0.06, 1.70, 0);
+    lamp.add(this.floorLampShadeMesh);
+
+    // 5. Diffuser disc at bottom of shade
+    const diffuserMat = new THREE.MeshBasicMaterial({
+      color: 0xffeed4,
+      transparent: true,
+      opacity: 0.8,
+    });
+    const diffuser = new THREE.Mesh(new THREE.CircleGeometry(0.20, 24), diffuserMat);
+    diffuser.rotation.x = Math.PI / 2;
+    diffuser.position.set(-0.06, 1.57, 0);
+    lamp.add(diffuser);
+
+    // 6. Warm LED Bulb
+    const bulbMat = new THREE.MeshBasicMaterial({ color: 0xfff4e0 });
+    this.floorLampBulbMesh = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 16), bulbMat);
+    this.floorLampBulbMesh.position.set(-0.06, 1.68, 0);
+    lamp.add(this.floorLampBulbMesh);
+
+    // 7. Floor lamp point light (soft, realistic warmth)
+    this.floorLampLight = new THREE.PointLight(0xffecd1, 0.35, 6.0, 1.2);
+    this.floorLampLight.position.set(-0.06, 1.65, 0);
+    this.floorLampLight.castShadow = false;
+    lamp.add(this.floorLampLight);
+
+    this.floorLampGroup = lamp;
+    this.group.add(lamp);
+  }
+
+  public checkFishLampProximity(fishList: { pos: THREE.Vector3; group: THREE.Group }[]) {
+    const triggerRadiusSq = 2.2 * 2.2; // 2.2m detection radius
+    const exitRadiusSq = 2.9 * 2.9;    // 2.9m exit hysteresis to avoid edge fluttering
+
+    for (let i = 0; i < fishList.length; i++) {
+      const fish = fishList[i];
+      if (!fish.group.visible) continue;
+
+      const distSq = this.floorLampPos.distanceToSquared(fish.pos);
+
+      if (distSq < triggerRadiusSq) {
+        if (!this.nearFishIds.has(i)) {
+          // Fish enters proximity on this pass: trigger 3-second soft illumination
+          this.nearFishIds.add(i);
+          this.floorLampTimer = 3.0;
+        }
+      } else if (distSq > exitRadiusSq) {
+        // Fish leaves proximity: allows triggering on subsequent passes
+        this.nearFishIds.delete(i);
+      }
+    }
   }
 
   private createGlowingOrb() {
@@ -684,6 +794,26 @@ export class LivingRoom {
       }
     }
     this.orbLight.intensity = (2.2 + pulse + handBoost) * (1.0 + this.emergenceProgress * 1.5);
+
+    // Floor Lamp Soft Illumination & Gradual Dimming (3-second duration when fish pass)
+    if (this.floorLampTimer > 0) {
+      this.floorLampTimer -= delta;
+      this.floorLampTargetIntensity = 2.4; // Soft glow illumination
+    } else {
+      this.floorLampTargetIntensity = 0.35; // Gentle baseline warmth
+    }
+
+    this.floorLampCurrentIntensity = THREE.MathUtils.damp(
+      this.floorLampCurrentIntensity,
+      this.floorLampTargetIntensity,
+      2.2,
+      delta
+    );
+    this.floorLampLight.intensity = this.floorLampCurrentIntensity;
+    if (this.floorLampShadeMesh) {
+      const shadeEmissive = 0.15 + (this.floorLampCurrentIntensity / 2.4) * 0.7;
+      (this.floorLampShadeMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = shadeEmissive;
+    }
 
     // Animate emergence particles rising and floating out of the orb
     if (this.emergenceActive) {

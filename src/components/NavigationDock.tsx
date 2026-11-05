@@ -24,6 +24,7 @@ import {
   MicOff,
   Hand,
   Activity,
+  CircleDot,
 } from 'lucide-react';
 
 interface NavigationDockProps {
@@ -32,6 +33,7 @@ interface NavigationDockProps {
   cameraPreset: CameraPreset;
   onSelectCamera: (preset: CameraPreset) => void;
   onReset: () => void;
+  onCollapseToOrb?: () => void;
   isHandTrackingActive?: boolean;
   onToggleHandTracking?: () => void;
   handStatus?: string;
@@ -45,6 +47,7 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
   cameraPreset,
   onSelectCamera,
   onReset,
+  onCollapseToOrb,
   isHandTrackingActive = false,
   onToggleHandTracking,
   handStatus = 'idle',
@@ -305,6 +308,18 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
             >
               {isVoiceActive ? <Mic className="w-4 h-4 text-emerald-400" /> : <MicOff className="w-4 h-4" />}
             </button>
+
+            {/* Return to Orb button */}
+            {currentMoment > 1 && (
+              <button
+                onClick={onCollapseToOrb}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-950/70 border border-cyan-400/40 rounded-lg text-cyan-200 hover:text-white hover:bg-cyan-900/60 transition-colors cursor-pointer text-[11px] font-mono-display shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+                title="Return underwater world into the physical orb (Shortcut: E or join both hands together)"
+              >
+                <CircleDot className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
+                <span className="hidden sm:inline">Return to Orb</span>
+              </button>
+            )}
 
             {/* Reset button */}
             <button

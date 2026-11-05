@@ -65,6 +65,11 @@ export class SceneManager {
   private onMomentAdvanceCallback?: (moment: ExperienceMoment) => void;
   private onInteractionNoticeCallback?: (text: string) => void;
 
+  // Experience Reverse Collapse to Orb State
+  private isCollapsingBackToOrb = false;
+  private collapseElapsed = 0;
+  private readonly collapseDuration = 3.5;
+
   constructor(
     container: HTMLDivElement,
     callbacks?: {
@@ -158,6 +163,9 @@ export class SceneManager {
     this.scene.add(this.marineLife.group);
 
     this.soundSculptures = new SoundSculptures();
+    this.soundSculptures.onStateTransitionRequested = (targetMoment) => {
+      this.setMoment(targetMoment);
+    };
     this.scene.add(this.soundSculptures.group);
 
     // 7. Event Listeners
@@ -235,7 +243,6 @@ export class SceneManager {
     const worldPoint = cursorRay.origin.clone().add(cursorRay.direction.clone().multiplyScalar(4));
     const isMoving = (Math.abs(e.movementX) + Math.abs(e.movementY)) > 0.6;
     this.marineLife.updateCursorInteraction(worldPoint, isMoving, 0.016);
-    this.soundSculptures.checkRibbonProximity(worldPoint, performance.now());
 
     // Check hover cursor: the orb is interactive during World Emergence (State 2).
     if (this.currentMoment === 2) {
@@ -291,8 +298,8 @@ export class SceneManager {
       }
     }
 
-    // 3. Interactive Sound Sculptures
-    if (this.currentMoment >= 4) {
+    // 3. Interactive Sound Sculptures (Available once arrived in State 3, throughout State 4 and State 5)
+    if (this.currentMoment >= 3) {
       const scIntersects = this.raycaster.intersectObjects(this.soundSculptures.interactiveMeshes, true);
       if (scIntersects.length > 0) {
         const hit = scIntersects[0].object;
@@ -345,7 +352,6 @@ export class SceneManager {
     // Keep the selected fish responsive to hand movement, just as it is to mouse movement.
     // Only intentionally selected fish follow; all other fish remain autonomous.
     this.marineLife.updateCursorInteraction(worldPoint, true, 0.016);
-    this.soundSculptures.checkRibbonProximity(worldPoint, performance.now());
 
     // Pinch-and-hold lets the user move a sound sculpture through the room.
     if (isPinching && this.draggedObject) {
@@ -385,7 +391,7 @@ export class SceneManager {
         },
         {
           name: 'INSTRUMENT',
-          hits: this.currentMoment >= 4
+          hits: this.currentMoment >= 3
             ? this.handRaycaster.intersectObjects(this.soundSculptures.interactiveMeshes, true)
             : [],
         },
@@ -437,7 +443,7 @@ export class SceneManager {
     }
 
     // Sound sculptures: pinch to activate and hold to move, matching the mouse interaction.
-    if (this.currentMoment >= 4) {
+    if (this.currentMoment >= 3) {
       const sculptureHits = this.handRaycaster.intersectObjects(this.soundSculptures.interactiveMeshes, true);
       if (sculptureHits.length > 0) {
         const hit = sculptureHits[0].object;
@@ -503,6 +509,7 @@ export class SceneManager {
 
   public setMoment(moment: ExperienceMoment, playSound = true) {
     this.currentMoment = moment;
+    this.soundSculptures.setMoment(moment);
     if (playSound) {
       soundEngine.playMomentTransition(moment);
     }
@@ -626,6 +633,19 @@ export class SceneManager {
     }
   }
 
+  /**
+   * Smoothly collapses the entire underwater world back into the physical orb over 3.5 seconds.
+   * Triggered by two hands brought together or keyboard/dock fallback.
+   */
+  public startCollapseWorldBackToOrb() {
+    if (this.isCollapsingBackToOrb || this.currentMoment === 1) return;
+    this.isCollapsingBackToOrb = true;
+    this.collapseElapsed = 0;
+    this.draggedObject = null;
+    soundEngine.playMomentTransition(1);
+    this.onInteractionNoticeCallback?.('Returning underwater world into the physical orb...');
+  }
+
   public setCameraPreset(preset: CameraPreset) {
     this.cameraMode = preset;
     switch (preset) {
@@ -664,8 +684,49 @@ export class SceneManager {
       this.marineLife.update(delta, elapsed);
       this.soundSculptures.update(delta, elapsed);
 
+      // 1. Standing floor lamp proximity check (triggers soft illumination when fish swim past)
+      this.livingRoom.checkFishLampProximity(this.marineLife.fishList);
+
+      // 2. Reverse Collapse Transition to Orb (Triggered by two hands together or manual fallback)
+      if (this.isCollapsingBackToOrb) {
+        this.collapseElapsed += delta;
+        const progress = Math.min(1.0, this.collapseElapsed / this.collapseDuration);
+        const invP = 1.0 - progress;
+
+        // Camera smoothly glides back towards orb
+        this.cameraTargetPos.set(0, 1.25, 1.4);
+        this.cameraLookAtTarget.set(0, 0.95, 0.4);
+
+        // Reverse environment transitions
+        this.livingRoom.setOutdoorSkylineOpacity(progress);
+        this.underwaterCity.setVisibility(invP);
+        this.livingRoom.setCausticOpacity(0.55 * invP);
+        this.livingRoom.setOrbExpansion(invP);
+        this.livingRoom.setEmergenceProgress(invP * 0.1);
+        this.soundSculptures.setVisibility(invP);
+
+        // Collapse marine life into orb
+        this.marineLife.collapseIntoOrb(this.livingRoom.orbPosition, progress);
+
+        // Smoothly restore warm room lighting
+        this.roomAmbientLight.color.lerp(new THREE.Color(0xffedd5), delta * 2.5);
+        this.roomAmbientLight.intensity = THREE.MathUtils.lerp(this.roomAmbientLight.intensity, 0.8, delta * 2.5);
+        this.hemiLight.color.lerp(new THREE.Color(0xe0e7ff), delta * 2.5);
+        this.hemiLight.groundColor.lerp(new THREE.Color(0x1a1a24), delta * 2.5);
+        this.hemiLight.intensity = THREE.MathUtils.lerp(this.hemiLight.intensity, 0.85, delta * 2.5);
+        if (this.scene.fog && this.scene.fog instanceof THREE.FogExp2) {
+          this.scene.fog.density = THREE.MathUtils.lerp(this.scene.fog.density, 0.008, delta * 2.5);
+        }
+
+        if (progress >= 1.0) {
+          this.isCollapsingBackToOrb = false;
+          this.setMoment(1, false);
+          this.onInteractionNoticeCallback?.('Experience returned to the physical orb.');
+        }
+      }
+
       // Smooth camera interpolation with exponential damping
-      if (this.cameraMode === 'cinematic' && this.currentMoment === 5) {
+      if (this.cameraMode === 'cinematic' && this.currentMoment === 5 && !this.isCollapsingBackToOrb) {
         // Daydream subtle slow sway
         const swayX = Math.sin(elapsed * 0.25) * 0.4;
         const swayY = Math.cos(elapsed * 0.18) * 0.15;

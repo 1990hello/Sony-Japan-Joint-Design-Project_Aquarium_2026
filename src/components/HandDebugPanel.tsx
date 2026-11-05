@@ -188,6 +188,59 @@ export const HandDebugPanel: React.FC<HandDebugPanelProps> = ({
         }
       }
 
+      // Draw second hand skeleton if detected
+      const secondLandmarks = handState?.secondHandLandmarks;
+      if (secondLandmarks && secondLandmarks.length === 21) {
+        ctx.strokeStyle = 'rgba(192, 132, 252, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (const [startIdx, endIdx] of HAND_CONNECTIONS) {
+          const p1 = secondLandmarks[startIdx];
+          const p2 = secondLandmarks[endIdx];
+          if (p1 && p2) {
+            ctx.moveTo(p1.x * w, p1.y * h);
+            ctx.lineTo(p2.x * w, p2.y * h);
+          }
+        }
+        ctx.stroke();
+
+        for (let i = 0; i < secondLandmarks.length; i++) {
+          const pt = secondLandmarks[i];
+          ctx.beginPath();
+          ctx.arc(pt.x * w, pt.y * h, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#c084fc';
+          ctx.fill();
+        }
+      }
+
+      // If two hands dwell is active, render connection line and dwell progress arc
+      if (handState?.isTwoHandsDetected && landmarks && secondLandmarks && landmarks[0] && secondLandmarks[0]) {
+        const p1x = landmarks[0].x * w;
+        const p1y = landmarks[0].y * h;
+        const p2x = secondLandmarks[0].x * w;
+        const p2y = secondLandmarks[0].y * h;
+        const cx = (p1x + p2x) * 0.5;
+        const cy = (p1y + p2y) * 0.5;
+
+        ctx.strokeStyle = 'rgba(244, 114, 182, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(p1x, p1y);
+        ctx.lineTo(p2x, p2y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const dwell = handState.twoHandsDwellProgress ?? 0;
+        if (dwell > 0) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, 14, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * dwell);
+          ctx.strokeStyle = '#f472b6';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      }
+
       animId = requestAnimationFrame(render);
     };
 
@@ -365,6 +418,33 @@ export const HandDebugPanel: React.FC<HandDebugPanelProps> = ({
             <span className="text-slate-200">
               {handState ? handState.indexTip.y.toFixed(2) : '--'}
             </span>
+          </div>
+        </div>
+
+        {/* Two-Hand End Gesture Telemetry */}
+        <div className="space-y-1.5 p-2 rounded bg-slate-900/80 border border-slate-800">
+          <div className="flex justify-between items-center text-[10px]">
+            <span className="text-slate-400">Two Hands (End Experience):</span>
+            <span className="font-mono text-pink-300 font-medium">
+              {handState?.isTwoHandsDetected ? (
+                <>
+                  Dist: {handState.twoHandsDistance?.toFixed(2) ?? '--'} (Threshold: &lt;0.17)
+                </>
+              ) : (
+                <span className="text-slate-500">1 Hand Detected</span>
+              )}
+            </span>
+          </div>
+
+          <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800 relative">
+            <div
+              className="h-full transition-all duration-75 bg-gradient-to-r from-pink-500 to-rose-400"
+              style={{ width: `${Math.round((handState?.twoHandsDwellProgress ?? 0) * 100)}%` }}
+            />
+          </div>
+          <div className="text-[9px] text-slate-500 flex justify-between">
+            <span>Dwell confirmation: 1.0s</span>
+            <span>{Math.round((handState?.twoHandsDwellProgress ?? 0) * 100)}%</span>
           </div>
         </div>
 

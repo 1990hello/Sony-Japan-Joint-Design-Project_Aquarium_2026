@@ -82,6 +82,10 @@ export default function App() {
       onPinchRelease: (x, y) => {
         sceneManagerRef.current?.onHandPinchRelease(x, y);
       },
+      onTwoHandsTogether: () => {
+        sceneManagerRef.current?.startCollapseWorldBackToOrb();
+        showToast('Both hands joined: Returning underwater world into the physical orb');
+      },
       onStatusChange: (status, message) => {
         setHandStatus(status);
         setIsHandTrackingActive(status === 'tracking' || status === 'loading_model' || status === 'requesting');
@@ -115,6 +119,9 @@ export default function App() {
   const handleSelectMoment = useCallback((moment: ExperienceMoment) => {
     setCurrentMoment(moment);
     sceneManagerRef.current?.setMoment(moment);
+    if (moment === 1) {
+      handTrackerRef.current?.resetTwoHandsTrigger();
+    }
 
     // Update camera preset label to match mode
     if (moment === 1 || moment === 2) setCameraPreset('orb');
@@ -128,7 +135,12 @@ export default function App() {
     sceneManagerRef.current?.setCameraPreset(preset);
   }, []);
 
-  // Handle experience reset
+  // Handle experience reset / collapse into orb
+  const handleCollapseToOrb = useCallback(() => {
+    sceneManagerRef.current?.startCollapseWorldBackToOrb();
+    handTrackerRef.current?.resetTwoHandsTrigger();
+  }, []);
+
   const handleReset = useCallback(() => {
     handleSelectMoment(1);
     showToast('Experience reset to Moment 1: Discovery');
@@ -147,6 +159,8 @@ export default function App() {
         handleSelectMoment(currentMoment === 5 ? 4 : 5);
       } else if (['1', '2', '3', '4', '5'].includes(e.key)) {
         handleSelectMoment(parseInt(e.key, 10) as ExperienceMoment);
+      } else if (e.key.toLowerCase() === 'e' || e.key === 'Escape') {
+        handleCollapseToOrb();
       } else if (e.key.toLowerCase() === 'm') {
         soundEngine.toggleMute();
       } else if (e.key.toLowerCase() === 'h') {
@@ -162,7 +176,7 @@ export default function App() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [currentMoment, cameraPreset, handleSelectMoment, handleSelectCamera, handleToggleHandTracking]);
+  }, [currentMoment, cameraPreset, handleSelectMoment, handleSelectCamera, handleToggleHandTracking, handleCollapseToOrb]);
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#020712] select-none">
@@ -226,6 +240,7 @@ export default function App() {
         cameraPreset={cameraPreset}
         onSelectCamera={handleSelectCamera}
         onReset={handleReset}
+        onCollapseToOrb={handleCollapseToOrb}
         isHandTrackingActive={isHandTrackingActive}
         onToggleHandTracking={handleToggleHandTracking}
         handStatus={handStatus}

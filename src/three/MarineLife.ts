@@ -42,6 +42,7 @@ export interface FishEntity {
   circleSpeed: number;
   circleDir: number; // 1 or -1
   driftTimer: number; // For calm, occasional slow drifting/pausing
+  noteTimer: number; // Cadence timer for spawning musical notes while following
 }
 
 interface JellyfishEntity {
@@ -75,6 +76,25 @@ interface SelectionRipple {
   active: boolean;
 }
 
+interface MusicalNoteEntity {
+  group: THREE.Group;
+  material: THREE.MeshBasicMaterial;
+  active: boolean;
+  life: number;
+  maxLife: number;
+  driftVel: THREE.Vector3;
+  wobblePhase: number;
+}
+
+interface VisualPopBubbleEntity {
+  mesh: THREE.Mesh;
+  material: THREE.MeshBasicMaterial;
+  active: boolean;
+  life: number;
+  maxLife: number;
+  vel: THREE.Vector3;
+}
+
 export class MarineLife {
   public group: THREE.Group;
   public fishList: FishEntity[] = [];
@@ -88,6 +108,15 @@ export class MarineLife {
   public fishRaycastMap = new Map<THREE.Object3D, FishEntity>();
   private ripplePool: SelectionRipple[] = [];
   private rippleGroup: THREE.Group;
+
+  // Musical note trail behind selected fish
+  private musicalNotesGroup: THREE.Group;
+  private musicalNotePool: MusicalNoteEntity[] = [];
+  private noteSequenceIndex = 0;
+
+  // Visual bubble clusters spawned when normal bubbles pop
+  private popBubblesGroup: THREE.Group;
+  private popBubblesPool: VisualPopBubbleEntity[] = [];
   
   private roomPermeability = 0; // 0: confined to ocean / window; 1: swims freely inside the living room
   private leviathanPos = new THREE.Vector3(-45, 12, -40);
@@ -107,6 +136,18 @@ export class MarineLife {
     this.rippleGroup.name = 'SelectionRipples';
     this.group.add(this.rippleGroup);
     this.initRipplePool();
+
+    // Visual pop bubble clusters (purely visual, fixed size 0.65, non-interactive)
+    this.popBubblesGroup = new THREE.Group();
+    this.popBubblesGroup.name = 'PopBubbleClusters';
+    this.group.add(this.popBubblesGroup);
+    this.initPopBubblesPool();
+
+    // Musical note trail system for actively selected fish
+    this.musicalNotesGroup = new THREE.Group();
+    this.musicalNotesGroup.name = 'MusicalNotesTrail';
+    this.group.add(this.musicalNotesGroup);
+    this.initMusicalNotePool();
 
     // 1. Create Schools of Bioluminescent Fish
     this.createFishSchool();
@@ -155,6 +196,138 @@ export class MarineLife {
     item.mesh.rotation.set(0, 0, Math.random() * Math.PI);
     (item.mesh.material as THREE.MeshBasicMaterial).opacity = 0.9;
     item.mesh.visible = true;
+  }
+
+  // --- 5. Visual Pop Bubble Cluster (Fixed size 0.65, purely visual, non-interactive) ---
+  private initPopBubblesPool() {
+    const poolSize = 35;
+    const miniGeo = new THREE.SphereGeometry(0.05, 12, 12);
+    for (let i = 0; i < poolSize; i++) {
+      const bubbleMat = new THREE.MeshBasicMaterial({
+        color: 0x93c5fd,
+        transparent: true,
+        opacity: 0.65,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(miniGeo, bubbleMat);
+      // Fixed size of 0.65 as strictly required by specification
+      mesh.scale.set(0.65, 0.65, 0.65);
+      mesh.visible = false;
+      this.popBubblesGroup.add(mesh);
+
+      this.popBubblesPool.push({
+        mesh,
+        material: bubbleMat,
+        active: false,
+        life: 0,
+        maxLife: 1.8,
+        vel: new THREE.Vector3(),
+      });
+    }
+  }
+
+  public spawnPopBubbleCluster(origin: THREE.Vector3) {
+    const clusterCount = 5;
+    let spawned = 0;
+
+    for (const b of this.popBubblesPool) {
+      if (b.active) continue;
+      b.active = true;
+      b.life = 0;
+      b.maxLife = 1.6 + Math.random() * 0.4; // 1.6 to 2.0s
+      b.mesh.position.copy(origin).add(new THREE.Vector3(
+        (Math.random() - 0.5) * 0.08,
+        (Math.random() - 0.5) * 0.08,
+        (Math.random() - 0.5) * 0.08
+      ));
+      // Strictly maintain required fixed size of 0.65
+      b.mesh.scale.set(0.65, 0.65, 0.65);
+      b.material.opacity = 0.65;
+      b.vel.set(
+        (Math.random() - 0.5) * 0.35,
+        0.18 + Math.random() * 0.22, // Gentle upward drift
+        (Math.random() - 0.5) * 0.35
+      );
+      b.mesh.visible = true;
+
+      spawned++;
+      if (spawned >= clusterCount) break;
+    }
+  }
+
+  // --- 2. Musical Note Trail System (Spawned only behind actively selected fish) ---
+  private initMusicalNotePool() {
+    const poolSize = 25;
+    for (let i = 0; i < poolSize; i++) {
+      const noteGroup = new THREE.Group();
+      const noteMat = new THREE.MeshBasicMaterial({
+        color: 0xa5f3fc,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+
+      // 1. Note head: angled oval disc
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), noteMat);
+      head.scale.set(1.25, 0.85, 0.4);
+      head.rotation.z = 0.35;
+      noteGroup.add(head);
+
+      // 2. Note stem
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.18, 8), noteMat);
+      stem.position.set(0.048, 0.09, 0);
+      noteGroup.add(stem);
+
+      // 3. Note flag
+      const flag = new THREE.Mesh(new THREE.TorusGeometry(0.042, 0.007, 6, 12, Math.PI / 1.5), noteMat);
+      flag.position.set(0.052, 0.165, 0);
+      flag.rotation.z = -0.3;
+      noteGroup.add(flag);
+
+      noteGroup.visible = false;
+      this.musicalNotesGroup.add(noteGroup);
+
+      this.musicalNotePool.push({
+        group: noteGroup,
+        material: noteMat,
+        active: false,
+        life: 0,
+        maxLife: 2.0,
+        driftVel: new THREE.Vector3(),
+        wobblePhase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  public spawnMusicalNote(fishPos: THREE.Vector3, fishVel: THREE.Vector3) {
+    const item = this.musicalNotePool.find((n) => !n.active);
+    if (!item) return;
+
+    item.active = true;
+    item.life = 0;
+    item.maxLife = 2.0;
+
+    // Position note slightly behind fish along swimming path
+    const backOffset = fishVel.lengthSq() > 0.0001
+      ? fishVel.clone().normalize().multiplyScalar(0.24)
+      : new THREE.Vector3(0, 0, 0.24);
+
+    item.group.position.copy(fishPos).sub(backOffset);
+    item.group.position.y += (Math.random() - 0.5) * 0.06;
+    item.group.position.x += (Math.random() - 0.5) * 0.06;
+
+    item.driftVel.set(
+      (Math.random() - 0.5) * 0.05,
+      0.15 + Math.random() * 0.08, // Serene upward acoustic float
+      (Math.random() - 0.5) * 0.05
+    );
+    item.wobblePhase = Math.random() * Math.PI * 2;
+
+    item.group.scale.set(0.7, 0.7, 0.7);
+    item.group.rotation.set(0, (Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.25);
+    item.material.opacity = 0.85;
+    item.group.visible = true;
   }
 
   private createFishSchool() {
@@ -300,6 +473,7 @@ export class MarineLife {
         circleSpeed: 0.65 + Math.random() * 0.25,
         circleDir: Math.random() > 0.5 ? 1 : -1,
         driftTimer: 0,
+        noteTimer: 0,
       };
 
       this.fishList.push(fishEntity);
@@ -570,12 +744,60 @@ export class MarineLife {
     }
   }
 
+  /**
+   * Smoothly collapses all swimming marine life, jellyfish and bubbles into the glowing orb.
+   */
+  public collapseIntoOrb(orbPos: THREE.Vector3, progress: number) {
+    const p = Math.min(1.0, Math.max(0, progress));
+    const invP = 1.0 - p;
+
+    // Fade out active notes & pop clusters rapidly
+    this.musicalNotePool.forEach((n) => {
+      n.active = false;
+      n.group.visible = false;
+    });
+    this.popBubblesPool.forEach((b) => {
+      b.active = false;
+      b.mesh.visible = false;
+    });
+
+    // Lerp fish towards orb and shrink
+    for (const fish of this.fishList) {
+      if (!fish.group.visible) continue;
+      fish.pos.lerp(orbPos, 0.08 + p * 0.15);
+      fish.group.position.copy(fish.pos);
+      const s = Math.max(0.001, invP);
+      fish.group.scale.set(s, s, s);
+    }
+
+    // Lerp jellyfish towards orb and shrink
+    for (const jelly of this.jellyfishList) {
+      if (!jelly.group.visible) continue;
+      jelly.group.position.lerp(orbPos, 0.06 + p * 0.12);
+      const s = Math.max(0.001, invP);
+      jelly.group.scale.set(s, s, s);
+    }
+
+    // Shrink and converge bubbles
+    if (this.bubbleMeshGroup.visible) {
+      for (const b of this.bubbleList) {
+        b.mesh.position.lerp(orbPos, 0.06 + p * 0.12);
+        const s = Math.max(0.001, invP);
+        b.mesh.scale.set(s, s, s);
+      }
+    }
+  }
+
   public popBubbleAt(intersectedMesh: THREE.Object3D): boolean {
     const bubble = this.bubbleList.find((b) => b.mesh === intersectedMesh);
     if (bubble && !bubble.popped) {
       bubble.popped = true;
       soundEngine.playBubblePop();
       
+      // Spawn small cluster of smaller visual bubbles (fixed size 0.65, purely visual, non-interactive)
+      const popPos = bubble.mesh.position.clone();
+      this.spawnPopBubbleCluster(popPos);
+
       // Animate quick pop shrink
       bubble.mesh.scale.set(0.001, 0.001, 0.001);
       
@@ -747,8 +969,18 @@ export class MarineLife {
               );
               fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 1.05, 1.8, delta);
             }
+
+            // Spawn musical note trail while fish is following cursor (Requirement 2)
+            fish.noteTimer += delta;
+            if (fish.noteTimer >= 0.38) {
+              fish.noteTimer = 0;
+              this.spawnMusicalNote(fish.pos, fish.vel);
+              soundEngine.playFishNote(this.noteSequenceIndex++);
+            }
           }
         } else if (fish.followTimer < FISH_TOTAL_INTERACTION_DURATION) {
+          // Stop spawning notes and sounds once fish enters departure phase
+          fish.noteTimer = 0;
           // ==============================================================
           // PHASE 2: GRADUAL RETURN OVER 4 SECONDS (10.0s to 14.0s)
           // ==============================================================
@@ -952,6 +1184,44 @@ export class MarineLife {
         this.leviathanActive = false;
         this.leviathanGroup.visible = false;
         this.leviathanTimer = 35 + Math.random() * 25; // schedule next encounter
+      }
+    }
+
+    // 5. Update Musical Notes Trail
+    for (const note of this.musicalNotePool) {
+      if (!note.active) continue;
+      note.life += delta;
+      note.wobblePhase += delta * 2.8;
+
+      const progress = note.life / note.maxLife;
+      if (progress >= 1.0) {
+        note.active = false;
+        note.group.visible = false;
+      } else {
+        note.group.position.addScaledVector(note.driftVel, delta);
+        note.group.position.x += Math.sin(note.wobblePhase) * 0.035 * delta;
+        // Gentle graceful expansion, then soft fade-out
+        const s = 0.7 + Math.sin(progress * Math.PI) * 0.35;
+        note.group.scale.set(s, s, s);
+        note.material.opacity = Math.max(0, (1.0 - progress) * 0.85);
+      }
+    }
+
+    // 6. Update Visual Pop Bubble Clusters (Fixed size 0.65, purely visual)
+    for (const popB of this.popBubblesPool) {
+      if (!popB.active) continue;
+      popB.life += delta;
+
+      const progress = popB.life / popB.maxLife;
+      if (progress >= 1.0) {
+        popB.active = false;
+        popB.mesh.visible = false;
+      } else {
+        popB.mesh.position.addScaledVector(popB.vel, delta);
+        popB.vel.y += delta * 0.04; // Very gentle upward buoyancy
+        // Strictly maintain required fixed size of 0.65
+        popB.mesh.scale.set(0.65, 0.65, 0.65);
+        popB.material.opacity = Math.max(0, (1.0 - progress) * 0.65);
       }
     }
   }
