@@ -18,6 +18,8 @@ interface HandDebugPanelProps {
   handState: HandGestureState | null;
   handStatus: HandTrackerStatus;
   isOverOrb: boolean;
+  raycastTarget: string;
+  lastPinchResult: string;
   isTrackingActive: boolean;
   onToggleTracking: () => void;
   videoElement: HTMLVideoElement | null;
@@ -45,6 +47,8 @@ export const HandDebugPanel: React.FC<HandDebugPanelProps> = ({
   handState,
   handStatus,
   isOverOrb,
+  raycastTarget,
+  lastPinchResult,
   isTrackingActive,
   onToggleTracking,
   videoElement,
@@ -252,9 +256,9 @@ export const HandDebugPanel: React.FC<HandDebugPanelProps> = ({
             <Camera className="w-3 h-3 text-cyan-400" />
             <span>640x480 user mirror</span>
           </div>
-          {isOverOrb && (
+          {raycastTarget !== 'NONE' && (
             <div className="absolute top-1.5 right-2 px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-400/50 text-cyan-200 text-[9px] font-bold tracking-widest animate-pulse">
-              ORB TARGET
+              {raycastTarget} TARGET
             </div>
           )}
         </div>
@@ -295,10 +299,17 @@ export const HandDebugPanel: React.FC<HandDebugPanelProps> = ({
           </span>
           <span
             className={`font-semibold tracking-wide ${
-              isOverOrb ? 'text-cyan-300' : 'text-slate-400'
+              raycastTarget !== 'NONE' ? 'text-cyan-300' : 'text-slate-400'
             }`}
           >
-            {isOverOrb ? 'PHYSICAL ORB' : 'GENERAL SPACE'}
+            {raycastTarget}
+          </span>
+        </div>
+
+        <div className="p-2 rounded bg-slate-900/80 border border-slate-800 flex items-center justify-between text-[10px]">
+          <span className="text-slate-400">Last pinch activation:</span>
+          <span className={`font-semibold tracking-wide ${lastPinchResult === 'HIT' ? 'text-emerald-300' : lastPinchResult === 'MISS' ? 'text-rose-300' : 'text-slate-400'}`}>
+            {lastPinchResult}
           </span>
         </div>
 

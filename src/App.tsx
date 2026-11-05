@@ -29,6 +29,8 @@ export default function App() {
   const [handState, setHandState] = useState<HandGestureState | null>(null);
   const [handStatus, setHandStatus] = useState<HandTrackerStatus>('idle');
   const [isOverOrb, setIsOverOrb] = useState(false);
+  const [handRaycastTarget, setHandRaycastTarget] = useState('NONE');
+  const [lastHandPinchResult, setLastHandPinchResult] = useState('NOT TESTED');
   const [isHandTrackingActive, setIsHandTrackingActive] = useState(false);
 
   const showToast = useCallback((msg: string) => {
@@ -67,12 +69,15 @@ export default function App() {
         if (state.isHandDetected && sceneManagerRef.current) {
           const res = sceneManagerRef.current.onHandMove(state.x, state.y, state.isPinching);
           setIsOverOrb(!!res?.isOverOrb);
+          if (res?.target) setHandRaycastTarget(res.target);
         } else {
           setIsOverOrb(false);
+          setHandRaycastTarget('NONE');
         }
       },
       onPinchStart: (x, y) => {
-        sceneManagerRef.current?.onHandPinchStart(x, y);
+        const activated = sceneManagerRef.current?.onHandPinchStart(x, y) ?? false;
+        setLastHandPinchResult(activated ? 'HIT' : 'MISS');
       },
       onPinchRelease: (x, y) => {
         sceneManagerRef.current?.onHandPinchRelease(x, y);
@@ -190,6 +195,8 @@ export default function App() {
         handState={handState}
         handStatus={handStatus}
         isOverOrb={isOverOrb}
+        raycastTarget={handRaycastTarget}
+        lastPinchResult={lastHandPinchResult}
         isTrackingActive={isHandTrackingActive}
         onToggleTracking={handleToggleHandTracking}
         videoElement={handTrackerRef.current?.getVideo() ?? null}

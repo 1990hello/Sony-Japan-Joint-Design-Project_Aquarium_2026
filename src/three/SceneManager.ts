@@ -331,7 +331,11 @@ export class SceneManager {
   /**
    * Evaluates hand position for spatial hover states and returns contextual target info
    */
-  public onHandMove(normX: number, normY: number, isPinching: boolean): { isOverOrb: boolean } {
+  public onHandMove(
+    normX: number,
+    normY: number,
+    isPinching: boolean
+  ): { isOverOrb: boolean; target: 'NONE' | 'PHYSICAL ORB' | 'FISH' | 'BUBBLE' | 'INSTRUMENT' } {
     this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
     this.handRaycaster.setFromCamera(this.handNdc, this.camera);
 
@@ -353,14 +357,51 @@ export class SceneManager {
     }
 
     let isOverOrb = false;
+    let target: 'NONE' | 'PHYSICAL ORB' | 'FISH' | 'BUBBLE' | 'INSTRUMENT' = 'NONE';
+
     if (this.currentMoment === 2) {
       const orbHits = this.handRaycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
       isOverOrb = orbHits.length > 0;
+      if (isOverOrb) target = 'PHYSICAL ORB';
       this.livingRoom.setOrbHandHover(isOverOrb);
     } else {
       this.livingRoom.setOrbHandHover(false);
+
+      // Diagnostic hover raycasts use the same targets as pinch activation.
+      // Report the nearest target so we can distinguish a missed ray from a missed pinch event.
+      const candidates: {
+        name: 'FISH' | 'BUBBLE' | 'INSTRUMENT';
+        hits: THREE.Intersection[];
+      }[] = [
+        {
+          name: 'FISH',
+          hits: this.currentMoment >= 2
+            ? this.handRaycaster.intersectObjects(this.marineLife.fishClickableMeshes, false)
+            : [],
+        },
+        {
+          name: 'BUBBLE',
+          hits: this.handRaycaster.intersectObjects(this.marineLife.bubbleMeshGroup.children, false),
+        },
+        {
+          name: 'INSTRUMENT',
+          hits: this.currentMoment >= 4
+            ? this.handRaycaster.intersectObjects(this.soundSculptures.interactiveMeshes, true)
+            : [],
+        },
+      ];
+
+      let nearestDistance = Infinity;
+      for (const candidate of candidates) {
+        const hit = candidate.hits[0];
+        if (hit && hit.distance < nearestDistance) {
+          nearestDistance = hit.distance;
+          target = candidate.name;
+        }
+      }
     }
-    return { isOverOrb };
+
+    return { isOverOrb, target };
   }
 
   /**
