@@ -44,8 +44,8 @@ export interface HandTrackerCallbacks {
 }
 
 // Distance thresholds in normalized coordinate space with hysteresis margin
-export const PINCH_DOWN_THRESHOLD = 0.065;
-export const PINCH_UP_THRESHOLD = 0.105;
+export const PINCH_DOWN_THRESHOLD = 0.085;
+export const PINCH_UP_THRESHOLD = 0.125;
 
 // Smoothing factor for Exponential Moving Average (EMA)
 const ALPHA_POS = 0.38;
