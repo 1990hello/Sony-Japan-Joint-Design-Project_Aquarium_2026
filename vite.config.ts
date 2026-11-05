@@ -5,6 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: '/Sony-Japan-Joint-Design-Project_Aquarium_2026/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
