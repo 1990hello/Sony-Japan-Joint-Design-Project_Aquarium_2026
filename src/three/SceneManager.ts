@@ -331,9 +331,26 @@ export class SceneManager {
   /**
    * Evaluates hand position for spatial hover states and returns contextual target info
    */
-  public onHandMove(normX: number, normY: number, _isPinching: boolean): { isOverOrb: boolean } {
+  public onHandMove(normX: number, normY: number, isPinching: boolean): { isOverOrb: boolean } {
     this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
     this.handRaycaster.setFromCamera(this.handNdc, this.camera);
+
+    const handRay = this.handRaycaster.ray;
+    const worldPoint = handRay.origin.clone().add(handRay.direction.clone().multiplyScalar(4));
+
+    // Keep the selected fish responsive to hand movement, just as it is to mouse movement.
+    // Only intentionally selected fish follow; all other fish remain autonomous.
+    this.marineLife.updateCursorInteraction(worldPoint, true, 0.016);
+    this.soundSculptures.checkRibbonProximity(worldPoint, performance.now());
+
+    // Pinch-and-hold lets the user move a sound sculpture through the room.
+    if (isPinching && this.draggedObject) {
+      if (handRay.intersectPlane(this.dragPlane, this.dragIntersection)) {
+        this.draggedObject.position.copy(this.dragIntersection.sub(this.dragOffset));
+        this.draggedObject.position.y = Math.max(0.8, Math.min(3.2, this.draggedObject.position.y));
+        this.soundSculptures.checkSculpturesProximityChord();
+      }
+    }
 
     let isOverOrb = false;
     if (this.currentMoment === 2) {
@@ -354,6 +371,10 @@ export class SceneManager {
     this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
     this.handRaycaster.setFromCamera(this.handNdc, this.camera);
 
+    const handRay = this.handRaycaster.ray;
+    const worldPoint = handRay.origin.clone().add(handRay.direction.clone().multiplyScalar(4));
+
+    // State 2: pinch the physical orb to enter the full room transformation.
     if (this.currentMoment === 2) {
       const orbHits = this.handRaycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
       if (orbHits.length > 0) {
@@ -363,6 +384,45 @@ export class SceneManager {
         return true;
       }
     }
+
+    // Fish: a deliberate pinch selects one fish; the selected fish then follows the hand
+    // for its existing 10-second interaction window.
+    if (this.currentMoment >= 2) {
+      const fishHits = this.handRaycaster.intersectObjects(this.marineLife.fishClickableMeshes, false);
+      if (fishHits.length > 0) {
+        const selected = this.marineLife.clickFish(fishHits[0].object, worldPoint);
+        if (selected) return true;
+      }
+    }
+
+    // Sound sculptures: pinch to activate and hold to move, matching the mouse interaction.
+    if (this.currentMoment >= 4) {
+      const sculptureHits = this.handRaycaster.intersectObjects(this.soundSculptures.interactiveMeshes, true);
+      if (sculptureHits.length > 0) {
+        const hit = sculptureHits[0].object;
+        const activated = this.soundSculptures.triggerSculpture(hit);
+        if (activated) {
+          const info = this.soundSculptures.sculptureMap.get(hit);
+          if (info) {
+            this.draggedObject = info.rootGroup;
+            const normal = this.camera.getWorldDirection(new THREE.Vector3()).negate();
+            this.dragPlane.setFromNormalAndCoplanarPoint(normal, info.rootGroup.position);
+            if (handRay.intersectPlane(this.dragPlane, this.dragIntersection)) {
+              this.dragOffset.copy(this.dragIntersection).sub(info.rootGroup.position);
+            }
+            this.marineLife.attractFishTowards(info.rootGroup.position);
+          }
+          return true;
+        }
+      }
+    }
+
+    // Bubbles: a quick pinch pops the bubble.
+    const bubbleHits = this.handRaycaster.intersectObjects(this.marineLife.bubbleMeshGroup.children, false);
+    if (bubbleHits.length > 0 && this.marineLife.popBubbleAt(bubbleHits[0].object)) {
+      return true;
+    }
+
     return false;
   }
 
@@ -372,6 +432,9 @@ export class SceneManager {
   public onHandPinchRelease(normX: number, normY: number): boolean {
     this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
     this.handRaycaster.setFromCamera(this.handNdc, this.camera);
+
+    // Releasing a pinch drops any sound sculpture being held.
+    this.draggedObject = null;
 
     if (this.isHandPinchingOrb) {
       this.isHandPinchingOrb = false;
