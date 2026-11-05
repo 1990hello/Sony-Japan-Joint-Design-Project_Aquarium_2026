@@ -95,6 +95,11 @@ interface VisualPopBubbleEntity {
   vel: THREE.Vector3;
 }
 
+interface LampVisit {
+  fish: FishEntity;
+  phase: 'approach' | 'depart';
+}
+
 export class MarineLife {
   public group: THREE.Group;
   public fishList: FishEntity[] = [];
@@ -123,6 +128,14 @@ export class MarineLife {
   private leviathanTarget = new THREE.Vector3(45, 14, -40);
   private leviathanActive = false;
   private leviathanTimer = 8; // triggers periodic majestic crossings
+
+  // Scheduled, gentle fish visits keep the standing lamp interaction observable.
+  private lampVisits: LampVisit[] = [];
+  private lampVisitTimer = 10.0; // First visit begins as soon as the aquarium is active
+  private lastLampVisitorIndex = -1;
+  private lampPosition = new THREE.Vector3(3.8, 1.7, -4.1);
+  private lampApproachTarget = new THREE.Vector3(4.7, 1.7, -4.1);
+  private lampExitTarget = new THREE.Vector3(4.7, 2.1, -0.8);
 
   constructor() {
     this.group = new THREE.Group();
@@ -683,6 +696,80 @@ export class MarineLife {
     return leviathan;
   }
 
+  public setLampPosition(position: THREE.Vector3) {
+    this.lampPosition.copy(position);
+
+    // Fish approach from the room side, pass just beyond the lamp, then drift back into the room.
+    this.lampApproachTarget.copy(position);
+    this.lampApproachTarget.x += 0.9;
+
+    this.lampExitTarget.copy(position);
+    this.lampExitTarget.x += 0.9;
+    this.lampExitTarget.y += 0.4;
+    this.lampExitTarget.z += 3.3;
+  }
+
+  private updateLampVisits(delta: number) {
+    // Only schedule visits once the room has become an active underwater environment.
+    if (this.roomPermeability < 0.5) {
+      for (const visit of this.lampVisits) {
+        const fish = visit.fish;
+        if (!fish.isSelected && fish.group.visible) {
+          const index = this.fishList.indexOf(fish);
+          fish.target.set(
+            ((index % 5) - 2) * 1.4,
+            1.2 + Math.random() * 1.6,
+            -2.8 + Math.random() * 4.6
+          );
+        }
+      }
+      this.lampVisits.length = 0;
+      this.lampVisitTimer = 10.0;
+      return;
+    }
+
+    this.lampVisitTimer += delta;
+
+    // A user selecting a scheduled fish takes priority; remove it from the visit route.
+    this.lampVisits = this.lampVisits.filter(
+      (visit) => visit.fish.group.visible && visit.fish.inRoom && !visit.fish.isSelected
+    );
+
+    // Dispatch one new visitor every 10 seconds. Multiple visits may overlap briefly
+    // if a previous fish is still completing its gentle route.
+    if (this.lampVisitTimer >= 10.0) {
+      const activeFish = new Set(this.lampVisits.map((visit) => visit.fish));
+      let candidates = this.fishList.filter(
+        (fish) => fish.inRoom && fish.group.visible && !fish.isSelected && !activeFish.has(fish)
+      );
+
+      // Rotate visitors where possible, while preferring fish that are outside the lamp's
+      // trigger radius so their approach produces a fresh proximity-entry event.
+      const differentFish = candidates.filter((fish) => this.fishList.indexOf(fish) !== this.lastLampVisitorIndex);
+      if (differentFish.length > 0) candidates = differentFish;
+
+      const outsideTriggerRadius = candidates.filter(
+        (fish) => fish.pos.distanceToSquared(this.lampPosition) > 2.2 * 2.2
+      );
+      if (outsideTriggerRadius.length > 0) candidates = outsideTriggerRadius;
+
+      if (candidates.length > 0) {
+        const visitor = candidates.reduce((closest, candidate) =>
+          candidate.pos.distanceToSquared(this.lampApproachTarget) <
+          closest.pos.distanceToSquared(this.lampApproachTarget)
+            ? candidate
+            : closest
+        );
+
+        this.lampVisits.push({ fish: visitor, phase: 'approach' });
+        this.lastLampVisitorIndex = this.fishList.indexOf(visitor);
+        this.lampVisitTimer = 0;
+        visitor.driftTimer = 0;
+        visitor.target.copy(this.lampApproachTarget);
+      }
+    }
+  }
+
   public setRoomPermeability(p: number) {
     this.roomPermeability = Math.max(0, Math.min(1, p));
     // Bubble visibility & opacity
@@ -905,6 +992,8 @@ export class MarineLife {
   }
 
   public update(delta: number, elapsed: number) {
+    this.updateLampVisits(delta);
+
     // 0. Update Selection Ripples
     for (const ripple of this.ripplePool) {
       if (!ripple.active) continue;
@@ -1032,37 +1121,60 @@ export class MarineLife {
           fish.departureInitialized = false;
         }
       } else {
-        // ==============================================================
-        // AUTONOMOUS SWIMMING: Very slow, graceful, calm, and spacious
-        // ==============================================================
-        if (fish.driftTimer > 0) {
-          // Occasional peaceful drift/pause suspended in the water
-          fish.driftTimer -= delta;
-          fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 0.25, 0.8, delta);
-        } else {
-          // Smooth, unhurried cruising
-          fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed, 1.2, delta);
+        const lampVisit = this.lampVisits.find((visit) => visit.fish === fish);
 
-          // Update target only when reached or very rarely (prevents frantic path switching)
-          if (fish.pos.distanceTo(fish.target) < 0.7 || Math.random() < 0.003) {
-            // 35% chance to drift peacefully upon reaching destination
-            if (Math.random() < 0.35) {
-              fish.driftTimer = 2.5 + Math.random() * 3.5;
+        if (lampVisit) {
+          // A brief, gentle waypoint route takes this fish through the lamp's proximity zone.
+          if (lampVisit.phase === 'approach') {
+            fish.target.copy(this.lampApproachTarget);
+            fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 1.18, 1.4, delta);
+
+            if (fish.pos.distanceTo(this.lampApproachTarget) < 0.65) {
+              lampVisit.phase = 'depart';
+              fish.target.copy(this.lampExitTarget);
             }
+          } else {
+            fish.target.copy(this.lampExitTarget);
+            fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 1.12, 1.4, delta);
 
-            if (fish.inRoom) {
-              // Space out targets in the room, keeping central window view uncluttered
-              const targetX = ((i % 5) - 2) * 1.4 + (Math.random() - 0.5) * 0.8;
-              const targetY = 1.2 + Math.random() * 1.6;
-              const targetZ = -2.8 + Math.random() * 4.6;
-              fish.target.set(targetX, targetY, targetZ);
-            } else {
-              // Expansive slow glide outside through distant underwater city
-              fish.target.set(
-                (Math.random() - 0.5) * 44,
-                2.5 + Math.random() * 9,
-                boundsZ.min + Math.random() * (boundsZ.max - boundsZ.min)
-              );
+            if (fish.pos.distanceTo(this.lampExitTarget) < 0.8) {
+              this.lampVisits = this.lampVisits.filter((visit) => visit.fish !== fish);
+              fish.driftTimer = 1.5;
+            }
+          }
+        } else {
+          // ==============================================================
+          // AUTONOMOUS SWIMMING: Very slow, graceful, calm, and spacious
+          // ==============================================================
+          if (fish.driftTimer > 0) {
+            // Occasional peaceful drift/pause suspended in the water
+            fish.driftTimer -= delta;
+            fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 0.25, 0.8, delta);
+          } else {
+            // Smooth, unhurried cruising
+            fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed, 1.2, delta);
+
+            // Update target only when reached or very rarely (prevents frantic path switching)
+            if (fish.pos.distanceTo(fish.target) < 0.7 || Math.random() < 0.003) {
+              // 35% chance to drift peacefully upon reaching destination
+              if (Math.random() < 0.35) {
+                fish.driftTimer = 2.5 + Math.random() * 3.5;
+              }
+
+              if (fish.inRoom) {
+                // Space out targets in the room, keeping central window view uncluttered
+                const targetX = ((i % 5) - 2) * 1.4 + (Math.random() - 0.5) * 0.8;
+                const targetY = 1.2 + Math.random() * 1.6;
+                const targetZ = -2.8 + Math.random() * 4.6;
+                fish.target.set(targetX, targetY, targetZ);
+              } else {
+                // Expansive slow glide outside through distant underwater city
+                fish.target.set(
+                  (Math.random() - 0.5) * 44,
+                  2.5 + Math.random() * 9,
+                  boundsZ.min + Math.random() * (boundsZ.max - boundsZ.min)
+                );
+              }
             }
           }
         }

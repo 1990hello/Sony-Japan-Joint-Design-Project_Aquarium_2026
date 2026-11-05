@@ -160,6 +160,7 @@ export class SceneManager {
     this.scene.add(this.underwaterCity.group);
 
     this.marineLife = new MarineLife();
+    this.marineLife.setLampPosition(this.livingRoom.floorLampPos);
     this.scene.add(this.marineLife.group);
 
     this.soundSculptures = new SoundSculptures();
