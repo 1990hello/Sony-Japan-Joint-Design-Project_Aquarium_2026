@@ -299,10 +299,10 @@ export const HandDebugPanel: React.FC<HandDebugPanelProps> = ({
           </span>
           <span
             className={`font-semibold tracking-wide ${
-              isOverOrb ? 'text-cyan-300' : 'text-slate-400'
+              raycastTarget !== 'NONE' ? 'text-cyan-300' : 'text-slate-400'
             }`}
           >
-            {isOverOrb ? 'PHYSICAL ORB' : 'GENERAL SPACE'}
+            {raycastTarget}
           </span>
         </div>
 
