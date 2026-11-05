@@ -134,8 +134,10 @@ export class MarineLife {
   private lampVisitTimer = 10.0; // First visit begins as soon as the aquarium is active
   private lastLampVisitorIndex = -1;
   private lampPosition = new THREE.Vector3(3.8, 1.7, -4.1);
-  private lampApproachTarget = new THREE.Vector3(4.7, 1.7, -4.1);
-  private lampExitTarget = new THREE.Vector3(4.7, 2.1, -0.8);
+  // Three waypoints keep the pass visibly on the room side of the lamp.
+  private lampApproachTarget = new THREE.Vector3(2.7, 1.8, -2.85);
+  private lampPassTarget = new THREE.Vector3(3.35, 1.8, -3.75);
+  private lampExitTarget = new THREE.Vector3(2.5, 2.05, -1.1);
 
   constructor() {
     this.group = new THREE.Group();
@@ -699,14 +701,12 @@ export class MarineLife {
   public setLampPosition(position: THREE.Vector3) {
     this.lampPosition.copy(position);
 
-    // Fish approach from the room side, pass just beyond the lamp, then drift back into the room.
-    this.lampApproachTarget.copy(position);
-    this.lampApproachTarget.x += 0.9;
-
-    this.lampExitTarget.copy(position);
-    this.lampExitTarget.x += 0.9;
-    this.lampExitTarget.y += 0.4;
-    this.lampExitTarget.z += 3.3;
+    // Keep the whole route inside the room, in front of the lamp rather than behind
+    // the window/wall. The middle waypoint is deliberately well inside the 2.2m
+    // proximity radius so the existing three-second lamp glow reliably activates.
+    this.lampApproachTarget.set(position.x - 1.1, position.y + 0.1, position.z + 1.25);
+    this.lampPassTarget.set(position.x - 0.45, position.y + 0.1, position.z + 0.35);
+    this.lampExitTarget.set(position.x - 1.3, position.y + 0.35, position.z + 3.0);
   }
 
   private updateLampVisits(delta: number) {
@@ -743,23 +743,37 @@ export class MarineLife {
         (fish) => fish.inRoom && fish.group.visible && !fish.isSelected && !activeFish.has(fish)
       );
 
-      // Rotate visitors where possible, while preferring fish that are outside the lamp's
-      // trigger radius so their approach produces a fresh proximity-entry event.
-      const differentFish = candidates.filter((fish) => this.fishList.indexOf(fish) !== this.lastLampVisitorIndex);
-      if (differentFish.length > 0) candidates = differentFish;
-
+      // Prefer fish outside the trigger radius so each route creates a fresh lamp event.
+      // The nearest fish is chosen first to keep the trip short enough for the 10-second cadence.
       const outsideTriggerRadius = candidates.filter(
         (fish) => fish.pos.distanceToSquared(this.lampPosition) > 2.2 * 2.2
       );
       if (outsideTriggerRadius.length > 0) candidates = outsideTriggerRadius;
 
       if (candidates.length > 0) {
-        const visitor = candidates.reduce((closest, candidate) =>
+        const nearest = candidates.reduce((closest, candidate) =>
           candidate.pos.distanceToSquared(this.lampApproachTarget) <
           closest.pos.distanceToSquared(this.lampApproachTarget)
             ? candidate
             : closest
         );
+
+        // Rotate to another fish only when it is nearly as close; don't sacrifice the
+        // guaranteed cadence by sending a distant fish on an unnecessarily long detour.
+        const nearestDistance = nearest.pos.distanceTo(this.lampApproachTarget);
+        const alternateCandidates = candidates.filter(
+          (fish) =>
+            this.fishList.indexOf(fish) !== this.lastLampVisitorIndex &&
+            fish.pos.distanceTo(this.lampApproachTarget) <= nearestDistance + 1.25
+        );
+        const visitor = alternateCandidates.length > 0
+          ? alternateCandidates.reduce((closest, candidate) =>
+              candidate.pos.distanceToSquared(this.lampApproachTarget) <
+              closest.pos.distanceToSquared(this.lampApproachTarget)
+                ? candidate
+                : closest
+            )
+          : nearest;
 
         this.lampVisits.push({ fish: visitor, phase: 'approach' });
         this.lastLampVisitorIndex = this.fishList.indexOf(visitor);
@@ -1124,22 +1138,33 @@ export class MarineLife {
         const lampVisit = this.lampVisits.find((visit) => visit.fish === fish);
 
         if (lampVisit) {
-          // A brief, gentle waypoint route takes this fish through the lamp's proximity zone.
+          // Override idle drifting during the visit and guide the fish through three
+          // explicit waypoints: approach the lamp, pass close in front of it, then leave.
+          fish.driftTimer = 0;
+
           if (lampVisit.phase === 'approach') {
             fish.target.copy(this.lampApproachTarget);
-            fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 1.18, 1.4, delta);
+            fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 1.25, 2.0, delta);
 
-            if (fish.pos.distanceTo(this.lampApproachTarget) < 0.65) {
+            if (fish.pos.distanceTo(this.lampApproachTarget) < 0.45) {
+              lampVisit.phase = 'pass';
+              fish.target.copy(this.lampPassTarget);
+            }
+          } else if (lampVisit.phase === 'pass') {
+            fish.target.copy(this.lampPassTarget);
+            fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 1.25, 2.0, delta);
+
+            if (fish.pos.distanceTo(this.lampPassTarget) < 0.4) {
               lampVisit.phase = 'depart';
               fish.target.copy(this.lampExitTarget);
             }
           } else {
             fish.target.copy(this.lampExitTarget);
-            fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 1.12, 1.4, delta);
+            fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 1.15, 1.8, delta);
 
-            if (fish.pos.distanceTo(this.lampExitTarget) < 0.8) {
+            if (fish.pos.distanceTo(this.lampExitTarget) < 0.55) {
               this.lampVisits = this.lampVisits.filter((visit) => visit.fish !== fish);
-              fish.driftTimer = 1.5;
+              fish.driftTimer = 1.0;
             }
           }
         } else {
