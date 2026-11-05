@@ -32,6 +32,19 @@ export class LivingRoom {
   // Reused world-space scratch vectors for reliable proximity checks.
   private lampWorldPosition = new THREE.Vector3();
   private fishWorldPosition = new THREE.Vector3();
+  // Reused colour values for a smooth transition from neutral white to warm amber.
+  private readonly lampShadeNeutral = new THREE.Color(0xfff8ee);
+  private readonly lampShadeAmber = new THREE.Color(0xffbd78);
+  private readonly lampShadeEmissiveNeutral = new THREE.Color(0xffeedd);
+  private readonly lampShadeEmissiveAmber = new THREE.Color(0xff842e);
+  private readonly lampDiffuserNeutral = new THREE.Color(0xffeed4);
+  private readonly lampDiffuserAmber = new THREE.Color(0xffa04a);
+  private readonly lampBulbNeutral = new THREE.Color(0xfff4e0);
+  private readonly lampBulbAmber = new THREE.Color(0xffffa0);
+  private readonly lampBulbEmissiveNeutral = new THREE.Color(0xffb45c);
+  private readonly lampBulbEmissiveAmber = new THREE.Color(0xffff52);
+  private readonly lampLightNeutral = new THREE.Color(0xffecd1);
+  private readonly lampLightAmber = new THREE.Color(0xffffa0);
   
   private floorMesh: THREE.Mesh;
   private causticsOverlayMesh: THREE.Mesh;
@@ -832,18 +845,42 @@ export class LivingRoom {
       0,
       1
     );
+    // Shift the lamp itself from soft neutral white to a visible warm amber-orange.
+    // Using reusable colours avoids allocating new Color objects in the render loop.
     if (this.floorLampShadeMesh) {
-      const shadeEmissive = 0.15 + glowAmount * 0.9;
-      (this.floorLampShadeMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = shadeEmissive;
+      const shadeMaterial = this.floorLampShadeMesh.material as THREE.MeshStandardMaterial;
+      shadeMaterial.color.lerpColors(this.lampShadeNeutral, this.lampShadeAmber, glowAmount);
+      shadeMaterial.emissive.lerpColors(
+        this.lampShadeEmissiveNeutral,
+        this.lampShadeEmissiveAmber,
+        glowAmount
+      );
+      shadeMaterial.emissiveIntensity = 0.15 + glowAmount * 0.9;
     }
     if (this.floorLampBulbMesh) {
-      (this.floorLampBulbMesh.material as THREE.MeshStandardMaterial).emissiveIntensity =
-        0.15 + glowAmount * 2.2;
+      const bulbMaterial = this.floorLampBulbMesh.material as THREE.MeshStandardMaterial;
+      bulbMaterial.color.lerpColors(this.lampBulbNeutral, this.lampBulbAmber, glowAmount);
+      bulbMaterial.emissive.lerpColors(
+        this.lampBulbEmissiveNeutral,
+        this.lampBulbEmissiveAmber,
+        glowAmount
+      );
+      bulbMaterial.emissiveIntensity = 0.15 + glowAmount * 2.2;
       this.floorLampBulbMesh.scale.setScalar(1.0 + glowAmount * 0.18);
     }
     if (this.floorLampDiffuserMaterial) {
+      this.floorLampDiffuserMaterial.color.lerpColors(
+        this.lampDiffuserNeutral,
+        this.lampDiffuserAmber,
+        glowAmount
+      );
       this.floorLampDiffuserMaterial.opacity = 0.45 + glowAmount * 0.5;
     }
+    this.floorLampLight.color.lerpColors(
+      this.lampLightNeutral,
+      this.lampLightAmber,
+      glowAmount
+    );
 
     // Animate emergence particles rising and floating out of the orb
     if (this.emergenceActive) {
