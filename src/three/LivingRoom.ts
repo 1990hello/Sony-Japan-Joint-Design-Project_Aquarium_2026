@@ -16,6 +16,7 @@ export class LivingRoom {
   public emergenceParticles!: THREE.Points;
   public emergenceBubblesGroup!: THREE.Group;
   public orbPinchRippleMesh!: THREE.Mesh;
+  public orbHitProxy!: THREE.Mesh;
   
   private floorMesh: THREE.Mesh;
   private causticsOverlayMesh: THREE.Mesh;
@@ -513,6 +514,18 @@ export class LivingRoom {
     orbRoot.add(pinchRipple);
     this.orbPinchRippleMesh = pinchRipple;
 
+    // 9. Generous invisible hit-proxy sphere to guarantee crisp mouse and hand raycasting
+    const hitGeo = new THREE.SphereGeometry(0.52, 24, 24);
+    const hitMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0.0,
+      depthWrite: false,
+    });
+    const hitProxy = new THREE.Mesh(hitGeo, hitMat);
+    hitProxy.name = 'OrbHitProxy';
+    orbRoot.add(hitProxy);
+    this.orbHitProxy = hitProxy;
+
     return {
       group: orbRoot,
       pointLight,
@@ -531,6 +544,16 @@ export class LivingRoom {
     if (isPinching) {
       this.pinchRipplePhase = 0;
     }
+  }
+
+  public triggerOrbClickFeedback() {
+    this.orbHandHover = false;
+    this.orbHandPinched = true;
+    this.pinchRipplePhase = 0;
+    this.orbPinchRippleMesh.visible = true;
+    this.orbPinchRippleMesh.scale.set(1.35, 1.35, 1.35);
+    (this.orbPinchRippleMesh.material as THREE.MeshBasicMaterial).opacity = 1.0;
+    this.orbLight.intensity = 5.5;
   }
 
   private createEmergenceSystem() {

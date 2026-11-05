@@ -35,48 +35,44 @@ export const IntroOverlay: React.FC<IntroOverlayProps> = ({
         </div>
       </div>
 
-      {/* Main Narrative Card: Minimal, Centered-Bottom */}
-      <div className="self-center max-w-xl text-center flex flex-col items-center gap-6 pointer-events-auto bg-slate-950/70 border border-cyan-500/20 px-8 py-8 sm:px-12 sm:py-10 rounded-2xl shadow-2xl backdrop-blur-none">
-        <div className="w-10 h-10 rounded-full border border-cyan-400/40 flex items-center justify-center text-cyan-300">
-          <Compass className="w-5 h-5 stroke-[1.5]" />
+      {/* Main Narrative Card: Docked to bottom to leave glowing orb in center 100% visible and clickable */}
+      <div className="mt-auto mb-16 sm:mb-20 self-center max-w-lg text-center flex flex-col items-center gap-4 pointer-events-auto bg-slate-950/80 border border-cyan-500/25 px-6 py-6 sm:px-8 sm:py-7 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-md">
+        <div className="w-9 h-9 rounded-full border border-cyan-400/40 flex items-center justify-center text-cyan-300 bg-cyan-950/40">
+          <Compass className="w-4 h-4 stroke-[1.5]" />
         </div>
 
-        <div className="space-y-3">
-          <p className="text-lg sm:text-xl font-light tracking-wide text-slate-100 leading-relaxed italic font-serif">
+        <div className="space-y-2">
+          <p className="text-base sm:text-lg font-light tracking-wide text-slate-100 leading-snug italic font-serif">
             "Somewhere beyond the familiar, another world is waiting."
           </p>
-          <p className="text-xs sm:text-sm text-cyan-300/80 font-normal leading-relaxed max-w-md mx-auto">
-            Take a breath and step away from work. Inside the glowing glass orb on the coffee table is the doorway to an underwater sanctuary.
+          <p className="text-xs text-cyan-300/80 font-normal leading-relaxed max-w-sm mx-auto">
+            Click the glowing orb on the coffee table, pinch it with your hand, or click Enter below to begin.
           </p>
         </div>
 
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-1">
           <button
             onClick={onEnter}
-            className="group relative inline-flex items-center gap-3 px-7 py-3 text-sm font-medium tracking-wider text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-300 rounded-full hover:from-cyan-300 hover:to-teal-200 transition-all duration-300 shadow-[0_0_25px_rgba(34,211,238,0.4)] hover:shadow-[0_0_35px_rgba(34,211,238,0.6)] cursor-pointer"
+            className="group relative inline-flex items-center gap-2.5 px-6 py-2.5 text-xs font-semibold tracking-wider text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-300 rounded-full hover:from-cyan-300 hover:to-teal-200 transition-all duration-300 shadow-[0_0_20px_rgba(34,211,238,0.4)] hover:shadow-[0_0_30px_rgba(34,211,238,0.6)] cursor-pointer"
           >
             <span>Enter EXORA</span>
-            <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
+            <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-1" />
           </button>
 
           {onStartHandTracking && !isHandTrackingActive && (
             <button
               onClick={onStartHandTracking}
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-mono tracking-wider text-cyan-300/80 hover:text-cyan-200 bg-cyan-950/40 hover:bg-cyan-900/50 border border-cyan-500/25 rounded-md transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-mono tracking-wider text-cyan-300 hover:text-cyan-100 bg-cyan-950/60 hover:bg-cyan-900/70 border border-cyan-500/35 rounded-full transition-colors cursor-pointer"
             >
-              <span>Enable Webcam Hand Tracking & Pinch</span>
+              <span>Enable Hand Tracking</span>
             </button>
           )}
         </div>
-
-        <span className="text-[11px] font-mono-display text-slate-400 tracking-wider">
-          Click the button, touch the glowing orb, or pinch it with your hand
-        </span>
       </div>
 
       {/* Bottom Footer Note */}
-      <div className="text-center text-[11px] font-mono-display tracking-widest text-slate-500 uppercase">
-        Work-to-Rest Emotional Transition • Interactive Optional
+      <div className="text-center text-[10px] font-mono-display tracking-widest text-slate-500 uppercase pb-1">
+        Physical Orb Click • Hand Pinch Tracking • Work-to-Rest Emotional Transition
       </div>
     </div>
   );

@@ -16,6 +16,12 @@ export type HandTrackerStatus =
   | 'error'
   | 'stopped';
 
+export interface HandLandmarkPoint {
+  x: number; // 0..1 normalized mirrored screen coordinate
+  y: number; // 0..1 normalized screen coordinate
+  z: number;
+}
+
 export interface HandGestureState {
   isHandDetected: boolean;
   rawX: number; // 0..1 normalized mirrored screen coordinate
@@ -25,8 +31,9 @@ export interface HandGestureState {
   pinchDistance: number; // Euclidean distance between thumb & index tips
   isPinching: boolean;
   pinchProgress: number; // 0.0 (open) to 1.0 (fully touching)
-  thumbTip: { x: number; y: number; z: number };
-  indexTip: { x: number; y: number; z: number };
+  thumbTip: HandLandmarkPoint;
+  indexTip: HandLandmarkPoint;
+  allLandmarks?: HandLandmarkPoint[];
 }
 
 export interface HandTrackerCallbacks {
@@ -37,13 +44,22 @@ export interface HandTrackerCallbacks {
 }
 
 // Distance thresholds in normalized coordinate space with hysteresis margin
-const PINCH_DOWN_THRESHOLD = 0.065;
-const PINCH_UP_THRESHOLD = 0.105;
+export const PINCH_DOWN_THRESHOLD = 0.065;
+export const PINCH_UP_THRESHOLD = 0.105;
 
 // Smoothing factor for Exponential Moving Average (EMA)
-// 0.38 provides buttery fluid motion with negligible latency (~20ms)
 const ALPHA_POS = 0.38;
 const ALPHA_DIST = 0.42;
+
+// Wasm fallback candidates to guarantee reliable loading across networks
+const WASM_CDN_URLS = [
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.2/wasm',
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
+];
+
+const MODEL_ASSET_URL =
+  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 
 export class HandTracker {
   private video: HTMLVideoElement | null = null;
@@ -81,6 +97,10 @@ export class HandTracker {
     return this.statusMessage;
   }
 
+  public getVideo(): HTMLVideoElement | null {
+    return this.video;
+  }
+
   private setStatus(status: HandTrackerStatus, message = '') {
     this.status = status;
     this.statusMessage = message;
@@ -103,7 +123,7 @@ export class HandTracker {
     try {
       this.setStatus('requesting', 'Requesting webcam access...');
 
-      // 1. Request Webcam Stream
+      // 1. Request Webcam Stream with optimal 640x480 resolution
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640 },
@@ -115,47 +135,80 @@ export class HandTracker {
 
       this.stream = stream;
 
-      // 2. Create off-screen video element for frame ingestion
+      // 2. Setup video element without 'display: none' so browser engine actively decodes frames
       if (!this.video) {
         this.video = document.createElement('video');
-        this.video.playsInline = true;
+        this.video.setAttribute('playsinline', 'true');
+        this.video.setAttribute('webkit-playsinline', 'true');
         this.video.autoplay = true;
         this.video.muted = true;
-        this.video.style.display = 'none';
+        this.video.width = 640;
+        this.video.height = 480;
+        // Position off-screen without hiding display so frame rasterization runs smoothly
+        this.video.style.position = 'fixed';
+        this.video.style.top = '-9999px';
+        this.video.style.left = '-9999px';
+        this.video.style.width = '640px';
+        this.video.style.height = '480px';
+        this.video.style.opacity = '0';
+        this.video.style.pointerEvents = 'none';
+        this.video.style.zIndex = '-1';
         document.body.appendChild(this.video);
       }
 
       this.video.srcObject = stream;
       await this.video.play();
 
-      // 3. Load MediaPipe Hand Landmarker model
+      // Wait until video has loaded enough data to read frames
+      if (this.video.readyState < 2) {
+        await new Promise<void>((resolve) => {
+          if (!this.video) return resolve();
+          this.video.onloadeddata = () => resolve();
+        });
+      }
+
+      // 3. Load MediaPipe Hand Landmarker model with CDN fallbacks
       this.setStatus('loading_model', 'Loading hand tracking model...');
       if (!this.landmarker) {
-        const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm'
-        );
+        let visionInstance = null;
+        for (const wasmUrl of WASM_CDN_URLS) {
+          try {
+            visionInstance = await FilesetResolver.forVisionTasks(wasmUrl);
+            if (visionInstance) break;
+          } catch (wasmErr) {
+            console.warn(`FilesetResolver failed with ${wasmUrl}:`, wasmErr);
+          }
+        }
+
+        if (!visionInstance) {
+          throw new Error('Could not initialize MediaPipe vision tasks WebAssembly resolver.');
+        }
 
         try {
-          // Attempt GPU delegate first for hardware acceleration
-          this.landmarker = await HandLandmarker.createFromOptions(vision, {
+          // Attempt GPU delegate first for 60fps hardware acceleration
+          this.landmarker = await HandLandmarker.createFromOptions(visionInstance, {
             baseOptions: {
-              modelAssetPath:
-                'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+              modelAssetPath: MODEL_ASSET_URL,
               delegate: 'GPU',
             },
             runningMode: 'VIDEO',
             numHands: 1,
+            minHandDetectionConfidence: 0.5,
+            minHandPresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5,
           });
         } catch (gpuErr) {
-          console.warn('MediaPipe GPU delegate unavailable, falling back to CPU:', gpuErr);
-          this.landmarker = await HandLandmarker.createFromOptions(vision, {
+          console.warn('MediaPipe GPU delegate unavailable, falling back to CPU delegate:', gpuErr);
+          this.landmarker = await HandLandmarker.createFromOptions(visionInstance, {
             baseOptions: {
-              modelAssetPath:
-                'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+              modelAssetPath: MODEL_ASSET_URL,
               delegate: 'CPU',
             },
             runningMode: 'VIDEO',
             numHands: 1,
+            minHandDetectionConfidence: 0.45,
+            minHandPresenceConfidence: 0.45,
+            minTrackingConfidence: 0.45,
           });
         }
       }
@@ -187,15 +240,15 @@ export class HandTracker {
         return;
       }
 
-      if (this.video.readyState >= 2 && !this.video.paused) {
-        const now = performance.now();
-        if (now !== this.lastVideoTime) {
+      if (this.video.readyState >= 2 && !this.video.paused && this.video.videoWidth > 0) {
+        const now = Math.round(performance.now());
+        if (now > this.lastVideoTime) {
           this.lastVideoTime = now;
           try {
             const results = this.landmarker.detectForVideo(this.video, now);
             this.processLandmarks(results);
           } catch (e) {
-            // Context loss or transient frame skip
+            // Transient frame skip
           }
         }
       }
@@ -228,6 +281,7 @@ export class HandTracker {
           pinchProgress: 0,
           thumbTip: { x: 0, y: 0, z: 0 },
           indexTip: { x: 0, y: 0, z: 0 },
+          allLandmarks: [],
         });
       }
       return;
@@ -281,6 +335,13 @@ export class HandTracker {
       this.callbacks.onPinchRelease?.(posX, posY);
     }
 
+    // Transform all landmarks with mirror X for debug overlay rendering
+    const allMirrored = hand.map((lm) => ({
+      x: 1 - lm.x,
+      y: lm.y,
+      z: lm.z || 0,
+    }));
+
     const gestureState: HandGestureState = {
       isHandDetected: true,
       rawX: rawInteractionX,
@@ -292,6 +353,7 @@ export class HandTracker {
       pinchProgress,
       thumbTip: { x: 1 - thumb.x, y: thumb.y, z: thumb.z || 0 },
       indexTip: { x: 1 - index.x, y: index.y, z: index.z || 0 },
+      allLandmarks: allMirrored,
     };
 
     this.callbacks.onGestureState?.(gestureState);

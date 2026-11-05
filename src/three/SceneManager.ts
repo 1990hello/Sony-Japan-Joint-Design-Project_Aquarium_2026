@@ -240,7 +240,9 @@ export class SceneManager {
     // Check hover cursor
     if (this.currentMoment === 1) {
       const orbIntersects = this.raycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
-      this.container.style.cursor = orbIntersects.length > 0 ? 'pointer' : 'default';
+      const isHover = orbIntersects.length > 0;
+      this.container.style.cursor = isHover ? 'pointer' : 'default';
+      this.livingRoom.setOrbHandHover(isHover);
     } else {
       const scIntersects = this.raycaster.intersectObjects(this.soundSculptures.interactiveMeshes, true);
       const bubbleIntersects = this.raycaster.intersectObjects(this.marineLife.bubbleMeshGroup.children, false);
@@ -256,14 +258,21 @@ export class SceneManager {
     this.prevMouseY = e.clientY;
     this.isMouseDown = true;
 
+    // Direct NDC mouse calculation prevents uninitialized coordinate misses
+    const rect = this.container.getBoundingClientRect();
+    this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
     this.raycaster.setFromCamera(this.mouse, this.camera);
     const cursorRay = this.raycaster.ray;
     const worldPoint = cursorRay.origin.clone().add(cursorRay.direction.clone().multiplyScalar(4));
 
-    // 1. If in Moment 1, clicking the orb enters the experience
+    // 1. If in Moment 1, clicking the physical glowing orb initiates the aquarium transition
     if (this.currentMoment === 1) {
       const orbIntersects = this.raycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
       if (orbIntersects.length > 0) {
+        this.livingRoom.triggerOrbClickFeedback();
+        soundEngine.playPinchFeedback();
         this.advanceMoment();
         return;
       }
@@ -370,6 +379,7 @@ export class SceneManager {
       this.livingRoom.setOrbHandHover(false);
 
       if (this.currentMoment === 1) {
+        this.livingRoom.triggerOrbClickFeedback();
         this.advanceMoment();
         return true;
       }
@@ -377,7 +387,12 @@ export class SceneManager {
     return false;
   }
 
+  private lastAdvanceTime = 0;
+
   public advanceMoment() {
+    const now = performance.now();
+    if (now - this.lastAdvanceTime < 700) return;
+    this.lastAdvanceTime = now;
     const next = Math.min(5, this.currentMoment + 1) as ExperienceMoment;
     this.setMoment(next);
   }

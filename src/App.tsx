@@ -9,6 +9,7 @@ import { SmartGlassesHUD } from './components/SmartGlassesHUD';
 import { NavigationDock } from './components/NavigationDock';
 import { IntroOverlay } from './components/IntroOverlay';
 import { HandIndicator } from './components/HandIndicator';
+import { HandDebugPanel } from './components/HandDebugPanel';
 import { HandTracker, HandGestureState, HandTrackerStatus } from './services/HandTracker';
 import { ExperienceMoment, CameraPreset } from './types';
 import { soundEngine } from './audio/SoundEngine';
@@ -21,6 +22,7 @@ export default function App() {
   const [currentMoment, setCurrentMoment] = useState<ExperienceMoment>(1);
   const [cameraPreset, setCameraPreset] = useState<CameraPreset>('cinematic');
   const [isHUDVisible, setIsHUDVisible] = useState(true);
+  const [isDebugHUDVisible, setIsDebugHUDVisible] = useState(false);
   const [interactionToast, setInteractionToast] = useState<string | null>(null);
 
   // Hand tracking states
@@ -144,6 +146,8 @@ export default function App() {
         soundEngine.toggleMute();
       } else if (e.key.toLowerCase() === 'h') {
         handleToggleHandTracking();
+      } else if (e.key.toLowerCase() === 'd') {
+        setIsDebugHUDVisible((prev) => !prev);
       } else if (e.key.toLowerCase() === 'c') {
         const presets: CameraPreset[] = ['cinematic', 'orb', 'window', 'livingroom', 'free'];
         const nextIdx = (presets.indexOf(cameraPreset) + 1) % presets.length;
@@ -179,6 +183,18 @@ export default function App() {
         isOverOrb={isOverOrb}
       />
 
+      {/* 2c. Dev Debugging Panel for Webcam, Hand, and Pinch Telemetry */}
+      <HandDebugPanel
+        visible={isDebugHUDVisible}
+        onClose={() => setIsDebugHUDVisible(false)}
+        handState={handState}
+        handStatus={handStatus}
+        isOverOrb={isOverOrb}
+        isTrackingActive={isHandTrackingActive}
+        onToggleTracking={handleToggleHandTracking}
+        videoElement={handTrackerRef.current?.getVideo() ?? null}
+      />
+
       {/* 3. Moment 1 Cinematic Discovery Intro Overlay */}
       <IntroOverlay
         visible={currentMoment === 1}
@@ -206,6 +222,8 @@ export default function App() {
         isHandTrackingActive={isHandTrackingActive}
         onToggleHandTracking={handleToggleHandTracking}
         handStatus={handStatus}
+        isDebugHUDVisible={isDebugHUDVisible}
+        onToggleDebugHUD={() => setIsDebugHUDVisible((prev) => !prev)}
       />
     </main>
   );

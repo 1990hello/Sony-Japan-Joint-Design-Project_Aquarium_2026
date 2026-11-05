@@ -23,6 +23,7 @@ import {
   Mic,
   MicOff,
   Hand,
+  Activity,
 } from 'lucide-react';
 
 interface NavigationDockProps {
@@ -34,6 +35,8 @@ interface NavigationDockProps {
   isHandTrackingActive?: boolean;
   onToggleHandTracking?: () => void;
   handStatus?: string;
+  isDebugHUDVisible?: boolean;
+  onToggleDebugHUD?: () => void;
 }
 
 export const NavigationDock: React.FC<NavigationDockProps> = ({
@@ -45,6 +48,8 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
   isHandTrackingActive = false,
   onToggleHandTracking,
   handStatus = 'idle',
+  isDebugHUDVisible = false,
+  onToggleDebugHUD,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMuted, setIsMuted] = useState(soundEngine.getMuted());
@@ -269,6 +274,22 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
                 {isHandTrackingActive && (
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 )}
+              </button>
+            )}
+
+            {/* Dev HUD Toggle Button */}
+            {onToggleDebugHUD && (
+              <button
+                onClick={onToggleDebugHUD}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono tracking-wider transition-colors cursor-pointer ${
+                  isDebugHUDVisible
+                    ? 'bg-emerald-950/80 border-emerald-400 text-emerald-200 [box-shadow:0_0_10px_rgba(52,211,153,0.3)]'
+                    : 'bg-slate-950/60 border-cyan-500/20 text-slate-400 hover:text-cyan-300'
+                }`}
+                title="Toggle Hand & Pinch Developer Debug HUD (Press D)"
+              >
+                <Activity className={`w-3.5 h-3.5 ${isDebugHUDVisible ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <span className="hidden sm:inline text-[11px]">DEV HUD</span>
               </button>
             )}
 
