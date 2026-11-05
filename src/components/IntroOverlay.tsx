@@ -46,7 +46,7 @@ export const IntroOverlay: React.FC<IntroOverlayProps> = ({
             "Somewhere beyond the familiar, another world is waiting."
           </p>
           <p className="text-xs text-cyan-300/80 font-normal leading-relaxed max-w-sm mx-auto">
-            Click the glowing orb on the coffee table, pinch it with your hand, or click Enter below to begin.
+            Click Enter EXORA to begin. When World Emergence appears, click the glowing orb or pinch and release it to transform the room.
           </p>
         </div>
 
@@ -72,7 +72,7 @@ export const IntroOverlay: React.FC<IntroOverlayProps> = ({
 
       {/* Bottom Footer Note */}
       <div className="text-center text-[10px] font-mono-display tracking-widest text-slate-500 uppercase pb-1">
-        Physical Orb Click • Hand Pinch Tracking • Work-to-Rest Emotional Transition
+        Enter EXORA • Orb Click or Hand Pinch in World Emergence • Work-to-Rest Emotional Transition
       </div>
     </div>
   );
