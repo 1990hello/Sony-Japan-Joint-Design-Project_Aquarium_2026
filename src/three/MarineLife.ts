@@ -917,12 +917,13 @@ export class MarineLife {
 
     // 3. Update Rising Bubbles
     if (this.bubbleMeshGroup.visible) {
+      const bubbleMotionScale = 0.75; // 25% slower, preserving bubble size, spacing, and wobble amplitude
       for (const b of this.bubbleList) {
         if (b.popped) continue;
-        b.phase += delta * b.wobbleSpeed;
-        b.mesh.position.y += delta * b.baseSpeed;
-        b.mesh.position.x += Math.sin(b.phase) * b.wobbleAmt * delta;
-        b.mesh.position.z += Math.cos(b.phase * 0.8) * b.wobbleAmt * delta;
+        b.phase += delta * b.wobbleSpeed * bubbleMotionScale;
+        b.mesh.position.y += delta * b.baseSpeed * bubbleMotionScale;
+        b.mesh.position.x += Math.sin(b.phase) * b.wobbleAmt * delta * bubbleMotionScale;
+        b.mesh.position.z += Math.cos(b.phase * 0.8) * b.wobbleAmt * delta * bubbleMotionScale;
 
         // Reset if reached ceiling
         if (b.mesh.position.y > b.maxY) {
