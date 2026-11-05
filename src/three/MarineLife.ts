@@ -428,7 +428,7 @@ export class MarineLife {
 
     for (let i = 0; i < bubbleCount; i++) {
       const mesh = new THREE.Mesh(bubbleGeo, bubbleMat);
-      const scale = 0.85 + Math.random() * 0.95;
+      const scale = 0.95 + Math.random() * 0.85;
       mesh.scale.set(scale, scale, scale);
 
       const spawnBounds = {
@@ -584,7 +584,7 @@ export class MarineLife {
         bubble.mesh.position.y = bubble.minY;
         bubble.mesh.position.x = bubble.spawnBounds.minX + Math.random() * (bubble.spawnBounds.maxX - bubble.spawnBounds.minX);
         bubble.mesh.position.z = bubble.spawnBounds.minZ + Math.random() * (bubble.spawnBounds.maxZ - bubble.spawnBounds.minZ);
-        const scale = 0.85 + Math.random() * 0.95;
+        const scale = 0.95 + Math.random() * 0.85;
         bubble.mesh.scale.set(scale, scale, scale);
         bubble.popped = false;
       }, 1200);
