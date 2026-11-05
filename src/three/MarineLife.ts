@@ -131,7 +131,7 @@ export class MarineLife {
 
   // Scheduled, gentle fish visits keep the standing lamp interaction observable.
   private lampVisits: LampVisit[] = [];
-  private lampVisitTimer = 10.0; // First visit begins as soon as the aquarium is active
+  private lampVisitTimer = 15.0; // First visit begins as soon as the aquarium is active
   private lastLampVisitorIndex = -1;
   private lampPosition = new THREE.Vector3(3.8, 1.7, -4.1);
   // Three waypoints keep the pass visibly on the room side of the lamp.
@@ -724,7 +724,7 @@ export class MarineLife {
         }
       }
       this.lampVisits.length = 0;
-      this.lampVisitTimer = 10.0;
+      this.lampVisitTimer = 15.0;
       return;
     }
 
@@ -735,9 +735,9 @@ export class MarineLife {
       (visit) => visit.fish.group.visible && visit.fish.inRoom && !visit.fish.isSelected
     );
 
-    // Dispatch one new visitor every 10 seconds. Multiple visits may overlap briefly
+    // Dispatch one new visitor every 15 seconds. Multiple visits may overlap briefly
     // if a previous fish is still completing its gentle route.
-    if (this.lampVisitTimer >= 10.0) {
+    if (this.lampVisitTimer >= 15.0) {
       const activeFish = new Set(this.lampVisits.map((visit) => visit.fish));
       let candidates = this.fishList.filter(
         (fish) => fish.inRoom && fish.group.visible && !fish.isSelected && !activeFish.has(fish)
@@ -759,7 +759,7 @@ export class MarineLife {
         );
 
         // Rotate to another fish only when it is nearly as close; don't sacrifice the
-        // guaranteed cadence by sending a distant fish on an unnecessarily long detour.
+        // 15-second cadence by sending a distant fish on an unnecessarily long detour.
         const nearestDistance = nearest.pos.distanceTo(this.lampApproachTarget);
         const alternateCandidates = candidates.filter(
           (fish) =>
