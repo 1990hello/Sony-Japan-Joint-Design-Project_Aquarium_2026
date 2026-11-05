@@ -917,7 +917,7 @@ export class MarineLife {
 
     // 3. Update Rising Bubbles
     if (this.bubbleMeshGroup.visible) {
-      const bubbleMotionScale = 0.75; // 25% slower, preserving bubble size, spacing, and wobble amplitude
+      const bubbleMotionScale = 0.375; // Half the previous bubble speed for a much calmer, slower drift
       for (const b of this.bubbleList) {
         if (b.popped) continue;
         b.phase += delta * b.wobbleSpeed * bubbleMotionScale;
