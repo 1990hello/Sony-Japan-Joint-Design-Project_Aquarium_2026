@@ -34,17 +34,17 @@ export class LivingRoom {
   private fishWorldPosition = new THREE.Vector3();
   // Reused colour values for a smooth transition from neutral white to warm amber.
   private readonly lampShadeNeutral = new THREE.Color(0xfff8ee);
-  private readonly lampShadeAmber = new THREE.Color(0xffbd78);
+  private readonly lampShadeAmber = new THREE.Color(0xffa044);
   private readonly lampShadeEmissiveNeutral = new THREE.Color(0xffeedd);
-  private readonly lampShadeEmissiveAmber = new THREE.Color(0xff842e);
+  private readonly lampShadeEmissiveAmber = new THREE.Color(0xff6a12);
   private readonly lampDiffuserNeutral = new THREE.Color(0xffeed4);
-  private readonly lampDiffuserAmber = new THREE.Color(0xffa04a);
+  private readonly lampDiffuserAmber = new THREE.Color(0xff8a24);
   private readonly lampBulbNeutral = new THREE.Color(0xfff4e0);
-  private readonly lampBulbAmber = new THREE.Color(0xffffa0);
+  private readonly lampBulbAmber = new THREE.Color(0xffff8a);
   private readonly lampBulbEmissiveNeutral = new THREE.Color(0xffb45c);
-  private readonly lampBulbEmissiveAmber = new THREE.Color(0xffff52);
+  private readonly lampBulbEmissiveAmber = new THREE.Color(0xffff24);
   private readonly lampLightNeutral = new THREE.Color(0xffecd1);
-  private readonly lampLightAmber = new THREE.Color(0xffffa0);
+  private readonly lampLightAmber = new THREE.Color(0xffff8a);
   
   private floorMesh: THREE.Mesh;
   private causticsOverlayMesh: THREE.Mesh;
@@ -827,7 +827,7 @@ export class LivingRoom {
     // Floor lamp glow: ramp up visibly, hold for three seconds, then fade smoothly.
     if (this.floorLampTimer > 0) {
       this.floorLampTimer = Math.max(0, this.floorLampTimer - delta);
-      this.floorLampTargetIntensity = 4.2;
+      this.floorLampTargetIntensity = 5.5;
     } else {
       this.floorLampTargetIntensity = 0.35;
     }
@@ -841,7 +841,7 @@ export class LivingRoom {
     this.floorLampLight.intensity = this.floorLampCurrentIntensity;
 
     const glowAmount = THREE.MathUtils.clamp(
-      (this.floorLampCurrentIntensity - 0.35) / (4.2 - 0.35),
+      (this.floorLampCurrentIntensity - 0.35) / (5.5 - 0.35),
       0,
       1
     );
@@ -855,7 +855,7 @@ export class LivingRoom {
         this.lampShadeEmissiveAmber,
         glowAmount
       );
-      shadeMaterial.emissiveIntensity = 0.15 + glowAmount * 0.9;
+      shadeMaterial.emissiveIntensity = 0.15 + glowAmount * 1.45;
     }
     if (this.floorLampBulbMesh) {
       const bulbMaterial = this.floorLampBulbMesh.material as THREE.MeshStandardMaterial;
@@ -865,7 +865,7 @@ export class LivingRoom {
         this.lampBulbEmissiveAmber,
         glowAmount
       );
-      bulbMaterial.emissiveIntensity = 0.15 + glowAmount * 2.2;
+      bulbMaterial.emissiveIntensity = 0.15 + glowAmount * 3.4;
       this.floorLampBulbMesh.scale.setScalar(1.0 + glowAmount * 0.18);
     }
     if (this.floorLampDiffuserMaterial) {
