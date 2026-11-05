@@ -237,8 +237,8 @@ export class SceneManager {
     this.marineLife.updateCursorInteraction(worldPoint, isMoving, 0.016);
     this.soundSculptures.checkRibbonProximity(worldPoint, performance.now());
 
-    // Check hover cursor
-    if (this.currentMoment === 1) {
+    // Check hover cursor: the orb is interactive during World Emergence (State 2).
+    if (this.currentMoment === 2) {
       const orbIntersects = this.raycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
       const isHover = orbIntersects.length > 0;
       this.container.style.cursor = isHover ? 'pointer' : 'default';
@@ -267,8 +267,8 @@ export class SceneManager {
     const cursorRay = this.raycaster.ray;
     const worldPoint = cursorRay.origin.clone().add(cursorRay.direction.clone().multiplyScalar(4));
 
-    // 1. If in Moment 1, clicking the physical glowing orb initiates the aquarium transition
-    if (this.currentMoment === 1) {
+    // 1. In World Emergence (State 2), clicking the physical glowing orb transforms the room.
+    if (this.currentMoment === 2) {
       const orbIntersects = this.raycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
       if (orbIntersects.length > 0) {
         this.livingRoom.triggerOrbClickFeedback();
@@ -336,7 +336,7 @@ export class SceneManager {
     this.handRaycaster.setFromCamera(this.handNdc, this.camera);
 
     let isOverOrb = false;
-    if (this.currentMoment === 1) {
+    if (this.currentMoment === 2) {
       const orbHits = this.handRaycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
       isOverOrb = orbHits.length > 0;
       this.livingRoom.setOrbHandHover(isOverOrb);
@@ -354,7 +354,7 @@ export class SceneManager {
     this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
     this.handRaycaster.setFromCamera(this.handNdc, this.camera);
 
-    if (this.currentMoment === 1) {
+    if (this.currentMoment === 2) {
       const orbHits = this.handRaycaster.intersectObjects(this.livingRoom.orbGroup.children, true);
       if (orbHits.length > 0) {
         this.isHandPinchingOrb = true;
@@ -378,7 +378,7 @@ export class SceneManager {
       this.livingRoom.setOrbHandPinching(false);
       this.livingRoom.setOrbHandHover(false);
 
-      if (this.currentMoment === 1) {
+      if (this.currentMoment === 2) {
         this.livingRoom.triggerOrbClickFeedback();
         this.advanceMoment();
         return true;
