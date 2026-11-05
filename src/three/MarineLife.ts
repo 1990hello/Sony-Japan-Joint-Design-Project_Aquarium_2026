@@ -731,7 +731,7 @@ export class MarineLife {
               fish.target.copy(fish.cursorTarget);
               fish.speed = THREE.MathUtils.damp(
                 fish.speed,
-                fish.normalSpeed * (distToCursor > 2.0 ? 1.25 : 1.1),
+                fish.normalSpeed * (distToCursor > 2.0 ? 1.35 : 1.2),
                 1.8,
                 delta
               );
@@ -745,7 +745,7 @@ export class MarineLife {
                 fish.cursorTarget.y + offsetY,
                 fish.cursorTarget.z + offsetZ
               );
-              fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 0.95, 1.8, delta);
+              fish.speed = THREE.MathUtils.damp(fish.speed, fish.normalSpeed * 1.05, 1.8, delta);
             }
           }
         } else if (fish.followTimer < FISH_TOTAL_INTERACTION_DURATION) {
