@@ -16,10 +16,13 @@ import { soundEngine } from './audio/SoundEngine';
 
 export default function App() {
   const canvasMountRef = useRef<HTMLDivElement>(null);
+  const enterButtonRef = useRef<HTMLButtonElement>(null);
+  const currentMomentRef = useRef<ExperienceMoment>(1);
   const sceneManagerRef = useRef<SceneManager | null>(null);
   const handTrackerRef = useRef<HandTracker | null>(null);
 
   const [currentMoment, setCurrentMoment] = useState<ExperienceMoment>(1);
+  currentMomentRef.current = currentMoment;
   const [cameraPreset, setCameraPreset] = useState<CameraPreset>('cinematic');
   const [isHUDVisible, setIsHUDVisible] = useState(true);
   const [isDebugHUDVisible, setIsDebugHUDVisible] = useState(false);
@@ -33,6 +36,7 @@ export default function App() {
   const [lastHandPinchResult, setLastHandPinchResult] = useState('NOT TESTED');
   const [isHandTrackingActive, setIsHandTrackingActive] = useState(false);
   const [isInteractionGuideVisible, setIsInteractionGuideVisible] = useState(false);
+  const [isHandHoveringEnter, setIsHandHoveringEnter] = useState(false);
 
   const showToast = useCallback((msg: string) => {
     setInteractionToast(msg);
@@ -45,6 +49,30 @@ export default function App() {
   useEffect(() => {
     setIsInteractionGuideVisible(currentMoment >= 3);
   }, [currentMoment]);
+
+  const isPointOverEnterButton = useCallback((normX: number, normY: number) => {
+    const rect = enterButtonRef.current?.getBoundingClientRect();
+    if (!rect) return false;
+
+    const pointX = normX * window.innerWidth;
+    const pointY = normY * window.innerHeight;
+    return pointX >= rect.left && pointX <= rect.right &&
+      pointY >= rect.top && pointY <= rect.bottom;
+  }, []);
+
+  // Handle moment changes
+  const handleSelectMoment = useCallback((moment: ExperienceMoment) => {
+    setCurrentMoment(moment);
+    sceneManagerRef.current?.setMoment(moment);
+    if (moment === 1) {
+      handTrackerRef.current?.resetTwoHandsTrigger();
+    }
+
+    // Update camera preset label to match mode
+    if (moment === 1 || moment === 2) setCameraPreset('orb');
+    else if (moment === 3) setCameraPreset('livingroom');
+    else setCameraPreset('cinematic');
+  }, []);
 
   // Initialize SceneManager
   useEffect(() => {
@@ -72,6 +100,11 @@ export default function App() {
     const tracker = new HandTracker({
       onGestureState: (state) => {
         setHandState(state);
+        if (state.isHandDetected && currentMomentRef.current === 1) {
+          setIsHandHoveringEnter(isPointOverEnterButton(state.x, state.y));
+        } else {
+          setIsHandHoveringEnter(false);
+        }
         if (state.isHandDetected && sceneManagerRef.current) {
           const res = sceneManagerRef.current.onHandMove(state.x, state.y, state.isPinching);
           setIsOverOrb(!!res?.isOverOrb);
@@ -82,6 +115,14 @@ export default function App() {
         }
       },
       onPinchStart: (x, y) => {
+        // In the opening screen, a pinch directly over Enter EXORA activates it immediately.
+        if (currentMomentRef.current === 1 && isPointOverEnterButton(x, y)) {
+          setIsHandHoveringEnter(false);
+          setLastHandPinchResult('HIT');
+          handleSelectMoment(2);
+          return;
+        }
+
         const activated = sceneManagerRef.current?.onHandPinchStart(x, y) ?? false;
         setLastHandPinchResult(activated ? 'HIT' : 'MISS');
       },
@@ -94,6 +135,7 @@ export default function App() {
       },
       onStatusChange: (status, message) => {
         setHandStatus(status);
+        if (status !== 'tracking') setIsHandHoveringEnter(false);
         setIsHandTrackingActive(status === 'tracking' || status === 'loading_model' || status === 'requesting');
         if (message && status !== 'tracking') {
           showToast(message);
@@ -107,7 +149,7 @@ export default function App() {
       tracker.dispose();
       handTrackerRef.current = null;
     };
-  }, [showToast]);
+  }, [showToast, isPointOverEnterButton, handleSelectMoment]);
 
   // Handle hand tracking toggle
   const handleToggleHandTracking = useCallback(async () => {
@@ -120,20 +162,6 @@ export default function App() {
       showToast('Hand tracking paused. Mouse fallback active.');
     }
   }, [showToast]);
-
-  // Handle moment changes
-  const handleSelectMoment = useCallback((moment: ExperienceMoment) => {
-    setCurrentMoment(moment);
-    sceneManagerRef.current?.setMoment(moment);
-    if (moment === 1) {
-      handTrackerRef.current?.resetTwoHandsTrigger();
-    }
-
-    // Update camera preset label to match mode
-    if (moment === 1 || moment === 2) setCameraPreset('orb');
-    else if (moment === 3) setCameraPreset('livingroom');
-    else setCameraPreset('cinematic');
-  }, []);
 
   // Handle camera changes
   const handleSelectCamera = useCallback((preset: CameraPreset) => {
@@ -229,6 +257,8 @@ export default function App() {
       <IntroOverlay
         visible={currentMoment === 1}
         onEnter={() => handleSelectMoment(2)}
+        enterButtonRef={enterButtonRef}
+        isHandHoveringEnter={isHandHoveringEnter}
         onStartHandTracking={handleToggleHandTracking}
         isHandTrackingActive={isHandTrackingActive}
       />

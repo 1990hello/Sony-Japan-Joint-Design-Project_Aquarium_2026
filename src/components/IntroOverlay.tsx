@@ -11,6 +11,8 @@ interface IntroOverlayProps {
   onEnter: () => void;
   onStartHandTracking?: () => void;
   isHandTrackingActive?: boolean;
+  enterButtonRef?: React.RefObject<HTMLButtonElement>;
+  isHandHoveringEnter?: boolean;
 }
 
 export const IntroOverlay: React.FC<IntroOverlayProps> = ({
@@ -18,6 +20,8 @@ export const IntroOverlay: React.FC<IntroOverlayProps> = ({
   onEnter,
   onStartHandTracking,
   isHandTrackingActive = false,
+  enterButtonRef,
+  isHandHoveringEnter = false,
 }) => {
   if (!visible) return null;
 
@@ -46,14 +50,15 @@ export const IntroOverlay: React.FC<IntroOverlayProps> = ({
             "Somewhere beyond the familiar, another world is waiting."
           </p>
           <p className="text-xs text-cyan-300/80 font-normal leading-relaxed max-w-sm mx-auto">
-            Click Enter EXORA to begin. When World Emergence appears, click the glowing orb or pinch and release it to transform the room.
+            Click or tap Enter EXORA to begin. With hand tracking active, move your hand cursor over the button and pinch. In World Emergence, click the glowing orb or pinch and release it to transform the room.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3 mt-1">
           <button
+            ref={enterButtonRef}
             onClick={onEnter}
-            className="group relative inline-flex items-center gap-2.5 px-6 py-2.5 text-xs font-semibold tracking-wider text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-300 rounded-full hover:from-cyan-300 hover:to-teal-200 transition-all duration-300 shadow-[0_0_20px_rgba(34,211,238,0.4)] hover:shadow-[0_0_30px_rgba(34,211,238,0.6)] cursor-pointer"
+            className={`group relative inline-flex items-center gap-2.5 px-6 py-2.5 text-xs font-semibold tracking-wider text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-300 rounded-full hover:from-cyan-300 hover:to-teal-200 transition-all duration-300 shadow-[0_0_20px_rgba(34,211,238,0.4)] hover:shadow-[0_0_30px_rgba(34,211,238,0.6)] cursor-pointer ${isHandHoveringEnter ? 'scale-105 ring-2 ring-cyan-100/80 shadow-[0_0_34px_rgba(103,232,249,0.75)]' : ''}`}
           >
             <span>Enter EXORA</span>
             <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-1" />
