@@ -33,6 +33,7 @@ export interface FishEntity {
   isSelected: boolean;
   isBeingDragged: boolean;
   dragPreviousPos: THREE.Vector3;
+  dragSmoothedVelocity: THREE.Vector3;
   followTimer: number; // Elapsed time in seconds since click (0 to 14.0s)
   cursorTarget: THREE.Vector3; // 3D world position of cursor
   departureTarget: THREE.Vector3; // Waypoint picked at 10.0s for unhurried departure
@@ -136,6 +137,11 @@ export class MarineLife {
   private lampVisits: LampVisit[] = [];
   private lampVisitTimer = 15.0; // First visit begins as soon as the aquarium is active
   private lastLampVisitorIndex = -1;
+  private dragLookTarget = new THREE.Vector3();
+  private dragCurrentQuaternion = new THREE.Quaternion();
+  private dragTargetQuaternion = new THREE.Quaternion();
+  private dragBankQuaternion = new THREE.Quaternion();
+  private dragRollAxis = new THREE.Vector3(0, 0, 1);
   private lampPosition = new THREE.Vector3(3.8, 1.7, -4.1);
   // Three waypoints keep the pass visibly on the room side of the lamp.
   private lampApproachTarget = new THREE.Vector3(2.7, 1.8, -2.85);
@@ -600,6 +606,7 @@ export class MarineLife {
         isSelected: false,
         isBeingDragged: false,
         dragPreviousPos: new THREE.Vector3().copy(initialPos),
+        dragSmoothedVelocity: new THREE.Vector3(),
         followTimer: 0,
         cursorTarget: new THREE.Vector3().copy(initialPos),
         departureTarget: new THREE.Vector3(),
@@ -1183,7 +1190,7 @@ export class MarineLife {
       }
 
       // While held, the fish follows the pointer directly but keeps swimming.
-      // Sample its movement to orient the body, animate the tail and leave a musical trail.
+      // Filter pointer movement before steering so tiny tracking variations do not flicker its heading.
       if (fish.isBeingDragged) {
         fish.target.copy(fish.pos);
         fish.cursorTarget.copy(fish.pos);
@@ -1193,27 +1200,48 @@ export class MarineLife {
           .clampLength(0, fish.normalSpeed * 3.0);
         fish.dragPreviousPos.copy(fish.pos);
 
-        if (fish.vel.lengthSq() > 0.0001) {
-          const lookTarget = new THREE.Vector3().addVectors(fish.pos, fish.vel);
-          const currentRot = fish.group.rotation.clone();
-          fish.group.lookAt(lookTarget);
-          fish.group.rotation.z = THREE.MathUtils.clamp(-fish.vel.x * 0.22, -0.25, 0.25);
-          fish.group.rotation.y = THREE.MathUtils.damp(currentRot.y, fish.group.rotation.y, 1.6, delta);
+        const dragVelocityBlend = 1 - Math.exp(-10 * delta);
+        fish.dragSmoothedVelocity.lerp(fish.vel, dragVelocityBlend);
+        const dragSpeedSq = fish.dragSmoothedVelocity.lengthSq();
 
-          // Continue the selected fish's musical trail while it is being moved.
+        // Only update heading once there is enough consistent movement to establish a direction.
+        // Quaternion slerp avoids Euler-angle wrap and abrupt yaw changes around +/- PI.
+        if (dragSpeedSq > 0.0009) {
+          this.dragCurrentQuaternion.copy(fish.group.quaternion);
+          this.dragLookTarget.copy(fish.pos).add(fish.dragSmoothedVelocity);
+          fish.group.lookAt(this.dragLookTarget);
+          this.dragTargetQuaternion.copy(fish.group.quaternion);
+
+          const bankAngle = THREE.MathUtils.clamp(
+            -fish.dragSmoothedVelocity.x * 0.16,
+            -0.18,
+            0.18
+          );
+          this.dragBankQuaternion.setFromAxisAngle(this.dragRollAxis, bankAngle);
+          this.dragTargetQuaternion.multiply(this.dragBankQuaternion);
+
+          const turnBlend = 1 - Math.exp(-5.5 * delta);
+          fish.group.quaternion
+            .copy(this.dragCurrentQuaternion)
+            .slerp(this.dragTargetQuaternion, turnBlend);
+        }
+
+        // Continue the musical trail while the fish is moving, using the steadier filtered velocity.
+        if (dragSpeedSq > 0.0004) {
           fish.noteTimer += delta;
           if (fish.noteTimer >= 0.38) {
             fish.noteTimer = 0;
-            this.spawnMusicalNote(fish.pos, fish.vel);
+            this.spawnMusicalNote(fish.pos, fish.dragSmoothedVelocity);
             soundEngine.playFishNote(this.noteSequenceIndex++);
           }
         } else {
           fish.noteTimer = 0;
         }
 
-        const dragWaggleRate = Math.max(1.0, fish.vel.length() * 3.0);
+        const dragWaggleRate = Math.max(1.0, fish.dragSmoothedVelocity.length() * 3.0);
         fish.swimCycle += delta * dragWaggleRate;
         fish.tailMesh.rotation.y = Math.sin(fish.swimCycle) * 0.28;
+        fish.vel.copy(fish.dragSmoothedVelocity);
         fish.group.position.copy(fish.pos);
         continue;
       }
