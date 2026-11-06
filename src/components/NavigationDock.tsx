@@ -484,7 +484,7 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
               No interaction is required. In Daydreaming, you can simply watch the underwater world drift by.
             </p>
           </div>
-        )}}
+        )}
       </div>
     </div>
   );
