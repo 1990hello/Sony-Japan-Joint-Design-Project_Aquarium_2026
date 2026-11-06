@@ -31,6 +31,7 @@ export interface FishEntity {
 
   // Level 2 Click-to-Select & 10-Second Follow System
   isSelected: boolean;
+  isBeingDragged: boolean;
   followTimer: number; // Elapsed time in seconds since click (0 to 14.0s)
   cursorTarget: THREE.Vector3; // 3D world position of cursor
   departureTarget: THREE.Vector3; // Waypoint picked at 10.0s for unhurried departure
@@ -478,6 +479,7 @@ export class MarineLife {
         isEmergentFish,
         personality,
         isSelected: false,
+        isBeingDragged: false,
         followTimer: 0,
         cursorTarget: new THREE.Vector3().copy(initialPos),
         departureTarget: new THREE.Vector3(),
@@ -972,6 +974,23 @@ export class MarineLife {
     return { fish };
   }
 
+  public moveDraggedFish(fish: FishEntity, position: THREE.Vector3) {
+    // Keep room fish within the living space and ocean fish within the visible water volume.
+    const bounds = fish.inRoom
+      ? { minX: -3.8, maxX: 3.8, minY: 0.7, maxY: 3.4, minZ: -5.0, maxZ: 3.2 }
+      : { minX: -30, maxX: 30, minY: 1.0, maxY: 15, minZ: -40, maxZ: -5.5 };
+
+    fish.pos.set(
+      THREE.MathUtils.clamp(position.x, bounds.minX, bounds.maxX),
+      THREE.MathUtils.clamp(position.y, bounds.minY, bounds.maxY),
+      THREE.MathUtils.clamp(position.z, bounds.minZ, bounds.maxZ)
+    );
+    fish.group.position.copy(fish.pos);
+    fish.target.copy(fish.pos);
+    fish.cursorTarget.copy(fish.pos);
+    fish.vel.set(0, 0, 0);
+  }
+
   public updateCursorInteraction(
     cursorWorldPos: THREE.Vector3,
     _isCursorMoving: boolean,
@@ -1034,6 +1053,18 @@ export class MarineLife {
         boundsZ = { min: -40, max: -5.5 };
       } else {
         boundsZ = { min: -5.0, max: 3.2 };
+      }
+
+      // While held by mouse or touch, the fish follows the pointer directly.
+      // Its normal follow behaviour resumes after the user releases it.
+      if (fish.isBeingDragged) {
+        fish.target.copy(fish.pos);
+        fish.cursorTarget.copy(fish.pos);
+        fish.vel.set(0, 0, 0);
+        fish.swimCycle += delta * 0.7;
+        fish.tailMesh.rotation.y = Math.sin(fish.swimCycle) * 0.22;
+        fish.group.position.copy(fish.pos);
+        continue;
       }
 
       if (fish.isSelected) {
