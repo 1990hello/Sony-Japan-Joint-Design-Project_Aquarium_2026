@@ -29,6 +29,9 @@ export class LivingRoom {
   private floorLampTargetIntensity = 0.35;
   private nearFishIds = new Set<number>();
   private floorLampDiffuserMaterial!: THREE.MeshBasicMaterial;
+  // Warm diffuse bounce highlight on the matte cardboard reflector beside the lamp.
+  private floorLampReflectorGlowMaterial!: THREE.MeshBasicMaterial;
+  private floorLampReflectorGlowMesh!: THREE.Mesh;
   // Reused world-space scratch vectors for reliable proximity checks.
   private lampWorldPosition = new THREE.Vector3();
   private fishWorldPosition = new THREE.Vector3();
@@ -140,6 +143,7 @@ export class LivingRoom {
 
     // Standing Floor Lamp near the panoramic window
     this.createFloorLamp();
+    this.createLampReflector();
 
     // Emergence Particle System (releases particles and bubbles from the orb during State 2)
     this.createEmergenceSystem();
@@ -459,6 +463,92 @@ export class LivingRoom {
 
     this.floorLampGroup = lamp;
     this.group.add(lamp);
+  }
+
+  private createLampReflector() {
+    const reflectorGroup = new THREE.Group();
+    reflectorGroup.name = 'FloorLampCardboardReflector';
+
+    // Set just behind and to the side of the lamp, angled toward both the lamp
+    // and the viewing area so its warm reflected light is easy to read.
+    reflectorGroup.position.set(4.55, 0, -4.55);
+    reflectorGroup.rotation.y = -0.8;
+
+    // A simple matte sand-ivory cardboard panel with a visible, slightly darker edge.
+    const cardboardMaterial = new THREE.MeshStandardMaterial({
+      color: 0xe7d6b8,
+      roughness: 0.96,
+      metalness: 0.0,
+    });
+    const cardboard = new THREE.Mesh(
+      new THREE.BoxGeometry(1.05, 1.42, 0.06),
+      cardboardMaterial
+    );
+    cardboard.position.set(0, 0.78, 0);
+    cardboard.castShadow = true;
+    cardboard.receiveShadow = true;
+    reflectorGroup.add(cardboard);
+
+    // Small understated feet keep the board grounded without turning it into signage.
+    const footMaterial = new THREE.MeshStandardMaterial({
+      color: 0x3a3025,
+      roughness: 0.82,
+      metalness: 0.08,
+    });
+    const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.22), footMaterial);
+    leftFoot.position.set(-0.36, 0.09, -0.07);
+    reflectorGroup.add(leftFoot);
+    const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.22), footMaterial);
+    rightFoot.position.set(0.36, 0.09, -0.07);
+    reflectorGroup.add(rightFoot);
+
+    // A soft radial amber wash makes the light bounce legible on the cardboard.
+    // The existing floor-lamp point light still provides the actual scene illumination.
+    const textureSize = 96;
+    const pixels = new Uint8Array(textureSize * textureSize * 4);
+    for (let y = 0; y < textureSize; y++) {
+      for (let x = 0; x < textureSize; x++) {
+        const u = (x / (textureSize - 1) - 0.5) / 0.62;
+        const v = (y / (textureSize - 1) - 0.52) / 0.78;
+        const radius = Math.sqrt(u * u + v * v);
+        const falloff = Math.max(0, 1 - radius);
+        const alpha = Math.round(Math.pow(falloff, 2.0) * 230);
+        const index = (y * textureSize + x) * 4;
+        pixels[index] = 255;
+        pixels[index + 1] = 255;
+        pixels[index + 2] = 255;
+        pixels[index + 3] = alpha;
+      }
+    }
+
+    const bounceTexture = new THREE.DataTexture(
+      pixels,
+      textureSize,
+      textureSize,
+      THREE.RGBAFormat
+    );
+    bounceTexture.needsUpdate = true;
+
+    this.floorLampReflectorGlowMaterial = new THREE.MeshBasicMaterial({
+      map: bounceTexture,
+      color: 0xffa34d,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+
+    this.floorLampReflectorGlowMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.92, 1.22),
+      this.floorLampReflectorGlowMaterial
+    );
+    this.floorLampReflectorGlowMesh.position.set(0, 0.78, 0.032);
+    this.floorLampReflectorGlowMesh.visible = false;
+    reflectorGroup.add(this.floorLampReflectorGlowMesh);
+
+    this.group.add(reflectorGroup);
   }
 
   public checkFishLampProximity(fishList: { pos: THREE.Vector3; group: THREE.Group }[]) {
@@ -845,6 +935,12 @@ export class LivingRoom {
       0,
       1
     );
+
+    // The reflector's warm patch follows the exact lamp glow envelope, then fades away with it.
+    if (this.floorLampReflectorGlowMaterial && this.floorLampReflectorGlowMesh) {
+      this.floorLampReflectorGlowMaterial.opacity = glowAmount * 0.46;
+      this.floorLampReflectorGlowMesh.visible = glowAmount > 0.015;
+    }
     // Shift the lamp itself from soft neutral white to a visible warm amber-orange.
     // Using reusable colours avoids allocating new Color objects in the render loop.
     if (this.floorLampShadeMesh) {
