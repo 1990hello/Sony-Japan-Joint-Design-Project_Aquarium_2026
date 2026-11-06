@@ -429,6 +429,8 @@ export class SceneManager {
         this.isHandPinchingOrb = true;
         this.livingRoom.setOrbHandPinching(true);
         soundEngine.playPinchFeedback();
+        this.livingRoom.triggerOrbClickFeedback();
+        this.advanceMoment();
         return true;
       }
     }
@@ -475,7 +477,8 @@ export class SceneManager {
   }
 
   /**
-   * Handles user releasing a pinch gesture. If the pinch originated on the orb, advances scene.
+   * Handles releasing a pinch: drops held instruments and clears the orb's pressed visual state.
+   * The orb transformation itself is triggered immediately when the pinch begins.
    */
   public onHandPinchRelease(normX: number, normY: number): boolean {
     this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
@@ -488,12 +491,7 @@ export class SceneManager {
       this.isHandPinchingOrb = false;
       this.livingRoom.setOrbHandPinching(false);
       this.livingRoom.setOrbHandHover(false);
-
-      if (this.currentMoment === 2) {
-        this.livingRoom.triggerOrbClickFeedback();
-        this.advanceMoment();
-        return true;
-      }
+      return true;
     }
     return false;
   }
