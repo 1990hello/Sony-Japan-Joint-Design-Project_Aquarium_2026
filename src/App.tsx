@@ -32,6 +32,7 @@ export default function App() {
   const [handRaycastTarget, setHandRaycastTarget] = useState('NONE');
   const [lastHandPinchResult, setLastHandPinchResult] = useState('NOT TESTED');
   const [isHandTrackingActive, setIsHandTrackingActive] = useState(false);
+  const [isInteractionGuideVisible, setIsInteractionGuideVisible] = useState(false);
 
   const showToast = useCallback((msg: string) => {
     setInteractionToast(msg);
@@ -39,6 +40,11 @@ export default function App() {
       setInteractionToast((prev) => (prev === msg ? null : prev));
     }, 2800);
   }, []);
+
+  // Show concise, stage-specific interaction guidance when the underwater experience changes mode.
+  useEffect(() => {
+    setIsInteractionGuideVisible(currentMoment >= 3);
+  }, [currentMoment]);
 
   // Initialize SceneManager
   useEffect(() => {
@@ -200,6 +206,9 @@ export default function App() {
       <HandIndicator
         gestureState={handState}
         isOverOrb={isOverOrb}
+        twoHandsDwellProgress={handState?.twoHandsDwellProgress ?? 0}
+        isTwoHandsDetected={!!handState?.isTwoHandsDetected}
+        secondHandLandmarks={handState?.secondHandLandmarks}
       />
 
       {/* 2c. Dev Debugging Panel for Webcam, Hand, and Pinch Telemetry */}
@@ -230,6 +239,54 @@ export default function App() {
           <div className="px-4 py-2 bg-slate-950/80 border border-cyan-400/30 text-cyan-200 text-xs font-mono-display tracking-wider rounded-full shadow-xl">
             {interactionToast}
           </div>
+        </div>
+      )}
+
+
+      {/* 4b. Contextual Interaction Guide */}
+      {currentMoment >= 3 && (
+        <div className="fixed top-24 left-4 z-30 w-[min(340px,calc(100vw-2rem))] pointer-events-auto">
+          {isInteractionGuideVisible ? (
+            <section className="relative rounded-xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-slate-200 shadow-xl backdrop-blur-sm">
+              <button
+                type="button"
+                aria-label="Dismiss interaction guide"
+                onClick={() => setIsInteractionGuideVisible(false)}
+                className="absolute right-3 top-2 text-lg leading-none text-cyan-200/60 hover:text-cyan-100"
+              >
+                ×
+              </button>
+              <p className="mb-1 text-[9px] font-mono-display tracking-[0.2em] text-cyan-300/70">
+                EXORA · INTERACTION GUIDE
+              </p>
+              <h2 className="mb-1 pr-6 text-sm font-semibold tracking-wide text-cyan-100">
+                {currentMoment === 3
+                  ? 'Observe & explore'
+                  : currentMoment === 4
+                  ? 'Interact with the soundscape'
+                  : 'Daydream at your own pace'}
+              </h2>
+              <p className="text-[11px] leading-relaxed text-slate-300">
+                {currentMoment === 3
+                  ? 'Take in the underwater city. Pinch a fish to invite it to follow for a moment, or pinch a bubble to pop it. The musical forms will arrive gradually.'
+                  : currentMoment === 4
+                  ? 'Pinch a fish to invite it to follow for 10 seconds. Pinch bubbles to pop them. Pinch a musical form to play it; keep pinched to move it.'
+                  : 'Simply watch and drift—nothing is required. If a musical form floats past, pinch it to return to musical interaction.'}
+              </p>
+              <div className="mt-2 border-t border-cyan-400/15 pt-2 text-[10px] leading-relaxed text-cyan-100/75">
+                <span className="font-semibold text-cyan-200">To return to the orb:</span>
+                {' '}bring both palms together and hold. The ring between your hands shows your progress.
+              </div>
+            </section>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsInteractionGuideVisible(true)}
+              className="rounded-full border border-cyan-300/25 bg-slate-950/70 px-3 py-1.5 text-[10px] font-mono-display tracking-wider text-cyan-100/80 shadow-lg backdrop-blur-sm hover:border-cyan-300/50 hover:text-cyan-50"
+            >
+              ? INTERACTION GUIDE
+            </button>
+          )}
         </div>
       )}
 
