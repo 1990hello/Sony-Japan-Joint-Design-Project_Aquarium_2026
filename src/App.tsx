@@ -149,7 +149,7 @@ export default function App() {
       tracker.dispose();
       handTrackerRef.current = null;
     };
-  }, [showToast]);
+  }, [showToast, isPointOverEnterButton, handleSelectMoment]);
 
   // Handle hand tracking toggle
   const handleToggleHandTracking = useCallback(async () => {
@@ -161,7 +161,7 @@ export default function App() {
     } else {
       showToast('Hand tracking paused. Mouse fallback active.');
     }
-  }, [showToast, isPointOverEnterButton, handleSelectMoment]);
+  }, [showToast]);
 
   // Handle camera changes
   const handleSelectCamera = useCallback((preset: CameraPreset) => {
