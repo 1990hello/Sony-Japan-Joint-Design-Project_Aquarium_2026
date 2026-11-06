@@ -57,6 +57,7 @@ interface JellyfishEntity {
   pulseSpeed: number;
   driftDir: THREE.Vector3;
   baseY: number;
+  spawnBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
 }
 
 interface BubbleEntity {
@@ -648,15 +649,22 @@ export class MarineLife {
       opacity: 0.45,
     });
 
+    // Keep all jellyfish near the panoramic window, just inside the room.
+    // The glass is at z = -4.8, so these positions remain comfortably in front of it.
     const initialPlacements = [
-      { x: -1.8, y: 1.8, z: 1.2 }, // Near sofa left
-      { x: 1.6, y: 2.2, z: 0.8 },  // Near coffee table right
-      { x: -0.5, y: 2.7, z: -2.8 }, // Near the panoramic window
+      { x: -2.0, y: 2.0, z: -3.65 },
+      { x: 0.0, y: 2.8, z: -3.9 },
+      { x: 2.0, y: 2.2, z: -3.55 },
     ];
+    const windowSideBounds = { minX: -2.6, maxX: 2.6, minZ: -4.2, maxZ: -3.1 };
 
     for (let i = 0; i < jellyCount; i++) {
       const jellyGroup = new THREE.Group();
       jellyGroup.position.set(initialPlacements[i].x, initialPlacements[i].y, initialPlacements[i].z);
+
+      // A smaller, softly varied size range; maximum is 0.8 of the previous default size.
+      const jellyScale = 0.65 + Math.random() * 0.15;
+      jellyGroup.scale.setScalar(jellyScale);
 
       // 1. Translucent Pulsing Bell
       const bellMesh = new THREE.Mesh(bellGeo, bellMat);
@@ -713,8 +721,9 @@ export class MarineLife {
         tentacleNodes,
         pulsePhase: i * 1.8,
         pulseSpeed: 1.2 + Math.random() * 0.4,
-        driftDir: new THREE.Vector3((Math.random() - 0.5) * 0.2, 0.1, (Math.random() - 0.5) * 0.2),
+        driftDir: new THREE.Vector3((Math.random() - 0.5) * 0.08, 0.1, (Math.random() - 0.5) * 0.05),
         baseY: initialPlacements[i].y,
+        spawnBounds: windowSideBounds,
       });
     }
   }
@@ -1437,6 +1446,24 @@ export class MarineLife {
       jelly.group.position.y = jelly.baseY + Math.sin(jelly.pulsePhase * 0.5) * 0.4 + upwardPush * 0.15;
       jelly.group.position.x += jelly.driftDir.x * delta;
       jelly.group.position.z += jelly.driftDir.z * delta;
+
+      // Gently reverse at the edges so jellyfish remain in the window-side area.
+      if (jelly.group.position.x < jelly.spawnBounds.minX || jelly.group.position.x > jelly.spawnBounds.maxX) {
+        jelly.group.position.x = THREE.MathUtils.clamp(
+          jelly.group.position.x,
+          jelly.spawnBounds.minX,
+          jelly.spawnBounds.maxX
+        );
+        jelly.driftDir.x *= -1;
+      }
+      if (jelly.group.position.z < jelly.spawnBounds.minZ || jelly.group.position.z > jelly.spawnBounds.maxZ) {
+        jelly.group.position.z = THREE.MathUtils.clamp(
+          jelly.group.position.z,
+          jelly.spawnBounds.minZ,
+          jelly.spawnBounds.maxZ
+        );
+        jelly.driftDir.z *= -1;
+      }
 
       // Update tentacle curves with soft lag
       for (let t = 0; t < jelly.tentacles.length; t++) {
