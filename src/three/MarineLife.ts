@@ -351,16 +351,73 @@ export class MarineLife {
     // Noticeably reduced fish population (approx 46% reduction: 15 fish total)
     // 7 in living room (spaced widely apart), 8 outside panoramic window across underwater city
     const fishCount = 15;
-    const fishBodyGeo = new THREE.ConeGeometry(0.12, 0.45, 6);
-    fishBodyGeo.rotateX(Math.PI / 2);
 
+    // A compact, tapered body built from shared low-poly rings.
+    // Smooth vertex normals soften the silhouette without adding texture or heavy geometry.
+    const fishBodyGeo = new THREE.BufferGeometry();
+    const bodyPositions: number[] = [];
+    const bodyIndices: number[] = [];
+    const bodyRings: Array<[number, number, number]> = [
+      [-0.225, 0.012, 0.010],
+      [-0.175, 0.050, 0.036],
+      [-0.105, 0.088, 0.062],
+      [-0.020, 0.118, 0.080],
+      [0.065, 0.112, 0.076],
+      [0.135, 0.082, 0.058],
+      [0.190, 0.045, 0.034],
+      [0.225, 0.012, 0.010],
+    ];
+    const bodySegments = 10;
+
+    for (const [z, radiusX, radiusY] of bodyRings) {
+      for (let segment = 0; segment < bodySegments; segment++) {
+        const angle = (segment / bodySegments) * Math.PI * 2;
+        bodyPositions.push(
+          Math.cos(angle) * radiusX,
+          Math.sin(angle) * radiusY,
+          z
+        );
+      }
+    }
+
+    for (let ring = 0; ring < bodyRings.length - 1; ring++) {
+      for (let segment = 0; segment < bodySegments; segment++) {
+        const next = (segment + 1) % bodySegments;
+        const a = ring * bodySegments + segment;
+        const b = ring * bodySegments + next;
+        const c = (ring + 1) * bodySegments + segment;
+        const d = (ring + 1) * bodySegments + next;
+        bodyIndices.push(a, b, c, b, d, c);
+      }
+    }
+
+    const rearCap = bodyPositions.length / 3;
+    bodyPositions.push(0, 0, bodyRings[0][0]);
+    const frontCap = bodyPositions.length / 3;
+    bodyPositions.push(0, 0, bodyRings[bodyRings.length - 1][0]);
+
+    for (let segment = 0; segment < bodySegments; segment++) {
+      const next = (segment + 1) % bodySegments;
+      bodyIndices.push(rearCap, next, segment);
+      const lastRing = (bodyRings.length - 1) * bodySegments;
+      bodyIndices.push(frontCap, lastRing + segment, lastRing + next);
+    }
+
+    fishBodyGeo.setAttribute('position', new THREE.Float32BufferAttribute(bodyPositions, 3));
+    fishBodyGeo.setIndex(bodyIndices);
+    fishBodyGeo.computeVertexNormals();
+
+    // A subtle forked tail fin gives the silhouette a recognisable fish profile.
     const fishTailGeo = new THREE.BufferGeometry();
     const tailVertices = new Float32Array([
       0, 0, 0,
-      -0.08, 0.15, -0.22,
-      0.08, 0.15, -0.22,
+      0, 0.145, -0.18,
+      0, 0.035, -0.125,
+      0, -0.035, -0.125,
+      0, -0.145, -0.18,
     ]);
     fishTailGeo.setAttribute('position', new THREE.BufferAttribute(tailVertices, 3));
+    fishTailGeo.setIndex([0, 1, 2, 0, 2, 3, 0, 3, 4]);
     fishTailGeo.computeVertexNormals();
 
     const personalities: FishPersonality[] = ['curious', 'shy', 'playful', 'social'];
@@ -419,19 +476,79 @@ export class MarineLife {
       const bodyMesh = new THREE.Mesh(fishBodyGeo, fishMat);
       fishGroup.add(bodyMesh);
 
-      // Sinuous tail hinge
+      // Sinuous, forked tail hinge.
       const tailMesh = new THREE.Mesh(fishTailGeo, tailMat);
       tailMesh.position.set(0, 0, -0.2);
       fishGroup.add(tailMesh);
 
-      // Subtle bioluminescent accent stripe
-      const accentGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.25, 4);
-      accentGeo.rotateX(Math.PI / 2);
+      // One lightweight details mesh combines dorsal/pectoral fins and a pair of tiny eyes.
+      // Vertex colours keep the fins luminous while the eyes remain softly dark.
+      const detailPositions: number[] = [];
+      const detailColors: number[] = [];
+      const detailIndices: number[] = [];
+      const finColor = new THREE.Color(accentColor);
+      const eyeColor = new THREE.Color(0x082f49);
+
+      const addFinTriangle = (
+        a: [number, number, number],
+        b: [number, number, number],
+        c: [number, number, number]
+      ) => {
+        const base = detailPositions.length / 3;
+        for (const point of [a, b, c]) {
+          detailPositions.push(point[0], point[1], point[2]);
+          detailColors.push(finColor.r, finColor.g, finColor.b);
+        }
+        detailIndices.push(base, base + 1, base + 2);
+      };
+
+      // Dorsal and lower fins.
+      addFinTriangle([0, 0.075, -0.085], [0, 0.17, -0.015], [0, 0.075, 0.055]);
+      addFinTriangle([0, -0.075, -0.11], [0, -0.14, -0.18], [0, -0.075, -0.015]);
+
+      // Paired pectoral fins, angled gently backwards.
+      addFinTriangle([0.075, 0.012, 0.035], [0.18, -0.075, -0.105], [0.075, -0.055, -0.105]);
+      addFinTriangle([-0.075, 0.012, 0.035], [-0.18, -0.075, -0.105], [-0.075, -0.055, -0.105]);
+
+      // Merge both low-poly eyes into the same details geometry to avoid extra draw calls.
+      const eyeGeometry = new THREE.SphereGeometry(0.014, 6, 4);
+      const eyePositions = eyeGeometry.getAttribute('position') as THREE.BufferAttribute;
+      const eyeIndex = eyeGeometry.getIndex();
+
+      for (const side of [-1, 1]) {
+        const base = detailPositions.length / 3;
+        for (let vertex = 0; vertex < eyePositions.count; vertex++) {
+          detailPositions.push(
+            eyePositions.getX(vertex) + side * 0.064,
+            eyePositions.getY(vertex) + 0.035,
+            eyePositions.getZ(vertex) + 0.145
+          );
+          detailColors.push(eyeColor.r, eyeColor.g, eyeColor.b);
+        }
+        if (eyeIndex) {
+          for (let index = 0; index < eyeIndex.count; index++) {
+            detailIndices.push(base + eyeIndex.getX(index));
+          }
+        }
+      }
+      eyeGeometry.dispose();
+
+      const detailsGeo = new THREE.BufferGeometry();
+      detailsGeo.setAttribute('position', new THREE.Float32BufferAttribute(detailPositions, 3));
+      detailsGeo.setAttribute('color', new THREE.Float32BufferAttribute(detailColors, 3));
+      detailsGeo.setIndex(detailIndices);
+      detailsGeo.computeVertexNormals();
+
       const accentMesh = new THREE.Mesh(
-        accentGeo,
-        new THREE.MeshBasicMaterial({ color: accentColor })
+        detailsGeo,
+        new THREE.MeshBasicMaterial({
+          vertexColors: true,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.92,
+          depthWrite: false,
+        })
       );
-      accentMesh.position.set(0, 0.04, 0.02);
       fishGroup.add(accentMesh);
 
       // Scales & initial placements
