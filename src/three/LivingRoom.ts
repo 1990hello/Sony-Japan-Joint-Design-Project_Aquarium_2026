@@ -476,7 +476,7 @@ export class LivingRoom {
 
     // A simple matte sand-ivory cardboard panel with a visible, slightly darker edge.
     const cardboardMaterial = new THREE.MeshStandardMaterial({
-      color: 0xe7d6b8,
+      color: 0x806044,
       roughness: 0.96,
       metalness: 0.0,
     });
