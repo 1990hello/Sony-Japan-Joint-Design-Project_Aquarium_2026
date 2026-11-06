@@ -206,6 +206,9 @@ export default function App() {
       <HandIndicator
         gestureState={handState}
         isOverOrb={isOverOrb}
+        twoHandsDwellProgress={handState?.twoHandsDwellProgress ?? 0}
+        isTwoHandsDetected={!!handState?.isTwoHandsDetected}
+        secondHandLandmarks={handState?.secondHandLandmarks}
       />
 
       {/* 2c. Dev Debugging Panel for Webcam, Hand, and Pinch Telemetry */}
