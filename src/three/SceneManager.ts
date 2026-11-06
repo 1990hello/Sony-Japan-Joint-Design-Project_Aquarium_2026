@@ -307,6 +307,8 @@ export class SceneManager {
           this.draggedFish = result.fish;
           result.fish.isBeingDragged = true;
           result.fish.dragPreviousPos.copy(result.fish.pos);
+          result.fish.dragSmoothedVelocity.set(0, 0, 0);
+          result.fish.vel.set(0, 0, 0);
 
           // Keep the fish at its original depth while the pointer moves across the screen.
           const normal = this.camera.getWorldDirection(new THREE.Vector3()).negate();
@@ -481,6 +483,8 @@ export class SceneManager {
           this.draggedFish = selected.fish;
           selected.fish.isBeingDragged = true;
           selected.fish.dragPreviousPos.copy(selected.fish.pos);
+          selected.fish.dragSmoothedVelocity.set(0, 0, 0);
+          selected.fish.vel.set(0, 0, 0);
 
           // Keep the fish on its original depth plane while the hand moves.
           const normal = this.camera.getWorldDirection(new THREE.Vector3()).negate();
