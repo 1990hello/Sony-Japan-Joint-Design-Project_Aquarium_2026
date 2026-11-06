@@ -457,31 +457,34 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
         {activeTab === 'guide' && (
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs text-slate-300">
             <div className="bg-slate-950/50 p-2.5 rounded-lg border border-cyan-500/10">
-              <span className="text-cyan-300 font-semibold block mb-1">Interactive Fish Personalities</span>
+              <span className="text-cyan-300 font-semibold block mb-1">Invite a fish</span>
               <p className="text-slate-400 text-[11px] leading-relaxed">
-                Click any fish to connect. <span className="text-cyan-200">Curious</span> investigates, <span className="text-emerald-300">Shy</span> retreats then returns, <span className="text-sky-300">Playful</span> circles in loops, and <span className="text-amber-200">Social</span> gathers companions.
+                Pinch a fish to invite it to follow your hand for about 10 seconds. It then gently returns to swimming on its own.
               </p>
             </div>
             <div className="bg-slate-950/50 p-2.5 rounded-lg border border-cyan-500/10">
-              <span className="text-cyan-300 font-semibold block mb-1">Interaction is Optional</span>
+              <span className="text-cyan-300 font-semibold block mb-1">Pop a bubble</span>
               <p className="text-slate-400 text-[11px] leading-relaxed">
-                EXORA is an emotional sanctuary, not a task. You can explore interactive creatures or simply sit back and let the marine world drift.
+                Pinch a floating bubble to pop it and release a small, delicate cluster of bubbles.
               </p>
             </div>
             <div className="bg-slate-950/50 p-2.5 rounded-lg border border-cyan-500/10">
-              <span className="text-cyan-300 font-semibold block mb-1">Spatial Music Playground</span>
+              <span className="text-cyan-300 font-semibold block mb-1">Play the sound forms</span>
               <p className="text-slate-400 text-[11px] leading-relaxed">
-                Click raindrop, harmonic sphere, or harp threads. Drag sculptures near each other to blend peaceful pentatonic chords.
+                Pinch a raindrop, harmonic sphere, or string instrument to make a sound. Keep pinched to move it; release to let it drift.
               </p>
             </div>
             <div className="bg-slate-950/50 p-2.5 rounded-lg border border-cyan-500/10">
-              <span className="text-cyan-300 font-semibold block mb-1">Gradual World Emergence</span>
+              <span className="text-cyan-300 font-semibold block mb-1">Return to the orb</span>
               <p className="text-slate-400 text-[11px] leading-relaxed">
-                Starts with an ordinary living room. The orb awakens, releasing particles, bubbles, and fish into the room before the window opens into the ocean metropolis.
+                Bring both palms together and hold until the progress ring completes. You can also use the Return to Orb control.
               </p>
             </div>
+            <p className="sm:col-span-4 text-[11px] text-slate-400">
+              No interaction is required. In Daydreaming, you can simply watch the underwater world drift by.
+            </p>
           </div>
-        )}
+        )}}
       </div>
     </div>
   );
