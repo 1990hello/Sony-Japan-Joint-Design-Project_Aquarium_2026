@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { LivingRoom } from './LivingRoom';
 import { UnderwaterCity } from './UnderwaterCity';
-import { MarineLife } from './MarineLife';
+import { MarineLife, type FishEntity } from './MarineLife';
 import { SoundSculptures } from './SoundSculptures';
 import { DynamicCausticsTexture } from './proceduralTextures';
 import { soundEngine } from '../audio/SoundEngine';
@@ -41,6 +41,7 @@ export class SceneManager {
   private dragPlane = new THREE.Plane();
   private dragIntersection = new THREE.Vector3();
   private draggedObject: THREE.Group | null = null;
+  private draggedFish: FishEntity | null = null;
   private dragOffset = new THREE.Vector3();
 
   // Hand Tracking Raycasting & Pinch Interaction
@@ -101,6 +102,7 @@ export class SceneManager {
     });
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.domElement.style.touchAction = 'none';
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
@@ -189,6 +191,7 @@ export class SceneManager {
     this.container.addEventListener('pointermove', this.onPointerMove);
     this.container.addEventListener('pointerdown', this.onPointerDown);
     this.container.addEventListener('pointerup', this.onPointerUp);
+    this.container.addEventListener('pointercancel', this.onPointerUp);
   }
 
   private onResize = () => {
@@ -209,6 +212,14 @@ export class SceneManager {
     this.raycaster.setFromCamera(this.mouse, this.camera);
     const planeIntersect = new THREE.Vector3();
     const cursorRay = this.raycaster.ray;
+
+    // Drag a selected fish directly under the mouse or finger.
+    if (this.draggedFish) {
+      if (cursorRay.intersectPlane(this.dragPlane, planeIntersect)) {
+        this.marineLife.moveDraggedFish(this.draggedFish, planeIntersect.sub(this.dragOffset));
+      }
+      return;
+    }
 
     // If dragging a sound sculpture
     if (this.draggedObject) {
@@ -293,7 +304,18 @@ export class SceneManager {
         const hitFish = fishIntersects[0].object;
         const result = this.marineLife.clickFish(hitFish, worldPoint);
         if (result) {
-          // Subtle audio-visual response only; no on-screen text per design requirements
+          this.draggedFish = result.fish;
+          result.fish.isBeingDragged = true;
+
+          // Keep the fish at its original depth while the pointer moves across the screen.
+          const normal = this.camera.getWorldDirection(new THREE.Vector3()).negate();
+          this.dragPlane.setFromNormalAndCoplanarPoint(normal, result.fish.pos);
+          if (cursorRay.intersectPlane(this.dragPlane, this.dragIntersection)) {
+            this.dragOffset.copy(this.dragIntersection).sub(result.fish.pos);
+          }
+
+          // Pointer capture keeps the drag alive if a finger or mouse leaves the canvas.
+          this.renderer.domElement.setPointerCapture(e.pointerId);
           return;
         }
       }
@@ -333,6 +355,10 @@ export class SceneManager {
 
   private onPointerUp = () => {
     this.isMouseDown = false;
+    if (this.draggedFish) {
+      this.draggedFish.isBeingDragged = false;
+      this.draggedFish = null;
+    }
     this.draggedObject = null;
   };
 
@@ -780,6 +806,7 @@ export class SceneManager {
     this.container.removeEventListener('pointermove', this.onPointerMove);
     this.container.removeEventListener('pointerdown', this.onPointerDown);
     this.container.removeEventListener('pointerup', this.onPointerUp);
+    this.container.removeEventListener('pointercancel', this.onPointerUp);
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
     this.renderer.dispose();
