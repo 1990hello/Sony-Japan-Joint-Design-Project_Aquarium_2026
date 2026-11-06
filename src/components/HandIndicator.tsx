@@ -9,11 +9,17 @@ import { HandGestureState } from '../services/HandTracker';
 interface HandIndicatorProps {
   gestureState: HandGestureState | null;
   isOverOrb: boolean;
+  twoHandsDwellProgress?: number;
+  isTwoHandsDetected?: boolean;
+  secondHandLandmarks?: { x: number; y: number; z: number }[];
 }
 
 export const HandIndicator: React.FC<HandIndicatorProps> = ({
   gestureState,
   isOverOrb,
+  twoHandsDwellProgress = 0,
+  isTwoHandsDetected = false,
+  secondHandLandmarks,
 }) => {
   if (!gestureState || !gestureState.isHandDetected) {
     return null;
@@ -23,6 +29,14 @@ export const HandIndicator: React.FC<HandIndicatorProps> = ({
 
   // Outer reticle diameter contracts smoothly as pinch progress increases (28px -> 12px)
   const ringSize = Math.max(12, Math.round(28 - pinchProgress * 16));
+
+  const showReturnProgress = isTwoHandsDetected && twoHandsDwellProgress > 0.01 && !!secondHandLandmarks?.[0] && !!gestureState.allLandmarks?.[0];
+  const firstPalm = gestureState.allLandmarks?.[0];
+  const secondPalm = secondHandLandmarks?.[0];
+  const midpoint = firstPalm && secondPalm
+    ? { x: (firstPalm.x + secondPalm.x) / 2, y: (firstPalm.y + secondPalm.y) / 2 }
+    : { x: 0.5, y: 0.5 };
+  const remaining = Math.max(0, 1 - twoHandsDwellProgress);
 
   return (
     <div
@@ -82,6 +96,28 @@ export const HandIndicator: React.FC<HandIndicatorProps> = ({
           </div>
         )}
       </div>
+
+      {showReturnProgress && (
+        <div
+          className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1"
+          style={{ left: `${(midpoint.x * 100).toFixed(2)}%`, top: `${(midpoint.y * 100).toFixed(2)}%` }}
+        >
+          <div
+            className="relative flex h-14 w-14 items-center justify-center rounded-full"
+            style={{
+              background: `conic-gradient(rgba(103,232,249,0.95) ${twoHandsDwellProgress * 360}deg, rgba(103,232,249,0.16) 0deg)`,
+              filter: 'drop-shadow(0 0 10px rgba(34,211,238,0.35))',
+            }}
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-200/20 bg-slate-950/90 text-[11px] font-mono-display text-cyan-100">
+              {(remaining).toFixed(1)}s
+            </div>
+          </div>
+          <span className="whitespace-nowrap rounded-full border border-cyan-300/20 bg-slate-950/85 px-2.5 py-1 text-[9px] font-mono-display tracking-wider text-cyan-100 shadow-lg">
+            KEEP HOLDING · RETURN TO ORB
+          </span>
+        </div>
+      )}
     </div>
   );
 };
