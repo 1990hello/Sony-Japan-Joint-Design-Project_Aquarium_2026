@@ -380,7 +380,17 @@ export class SceneManager {
     // Only intentionally selected fish follow; all other fish remain autonomous.
     this.marineLife.updateCursorInteraction(worldPoint, true, 0.016);
 
-    // Pinch-and-hold lets the user move a sound sculpture through the room.
+    // Pinch-and-hold lets the user drag a fish directly through the water.
+    if (isPinching && this.draggedFish) {
+      if (handRay.intersectPlane(this.dragPlane, this.dragIntersection)) {
+        this.marineLife.moveDraggedFish(
+          this.draggedFish,
+          this.dragIntersection.sub(this.dragOffset)
+        );
+      }
+    }
+
+    // Pinch-and-hold also lets the user move a sound sculpture through the room.
     if (isPinching && this.draggedObject) {
       if (handRay.intersectPlane(this.dragPlane, this.dragIntersection)) {
         this.draggedObject.position.copy(this.dragIntersection.sub(this.dragOffset));
@@ -461,13 +471,23 @@ export class SceneManager {
       }
     }
 
-    // Fish: a deliberate pinch selects one fish; the selected fish then follows the hand
-    // for its existing 10-second interaction window.
+    // Fish: pinch to grab, then keep pinching to drag it with the hand.
     if (this.currentMoment >= 2) {
       const fishHits = this.handRaycaster.intersectObjects(this.marineLife.fishClickableMeshes, false);
       if (fishHits.length > 0) {
         const selected = this.marineLife.clickFish(fishHits[0].object, worldPoint);
-        if (selected) return true;
+        if (selected) {
+          this.draggedFish = selected.fish;
+          selected.fish.isBeingDragged = true;
+
+          // Keep the fish on its original depth plane while the hand moves.
+          const normal = this.camera.getWorldDirection(new THREE.Vector3()).negate();
+          this.dragPlane.setFromNormalAndCoplanarPoint(normal, selected.fish.pos);
+          if (handRay.intersectPlane(this.dragPlane, this.dragIntersection)) {
+            this.dragOffset.copy(this.dragIntersection).sub(selected.fish.pos);
+          }
+          return true;
+        }
       }
     }
 
@@ -509,6 +529,12 @@ export class SceneManager {
   public onHandPinchRelease(normX: number, normY: number): boolean {
     this.handNdc.set(normX * 2 - 1, -(normY * 2 - 1));
     this.handRaycaster.setFromCamera(this.handNdc, this.camera);
+
+    // Releasing a pinch lets a dragged fish resume its selected-follow behaviour.
+    if (this.draggedFish) {
+      this.draggedFish.isBeingDragged = false;
+      this.draggedFish = null;
+    }
 
     // Releasing a pinch drops any sound sculpture being held.
     this.draggedObject = null;
