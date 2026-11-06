@@ -60,7 +60,7 @@ export const HandIndicator: React.FC<HandIndicatorProps> = ({
       >
         {/* Subtle pinch-release confirmation shockwave ripple */}
         {isPinching && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full border border-cyan-400/70 animate-ping opacity-60" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full border border-amber-300/80 animate-ping opacity-60" />
         )}
 
         {/* Dynamic Holographic Reticle Ring */}
@@ -69,8 +69,8 @@ export const HandIndicator: React.FC<HandIndicatorProps> = ({
             isPinching
               ? 'border-2 border-emerald-400 bg-emerald-400/20 [box-shadow:0_0_16px_rgba(52,211,153,0.8)]'
               : isOverOrb
-              ? 'border border-cyan-300 bg-cyan-400/10 [box-shadow:0_0_12px_rgba(103,232,249,0.7)]'
-              : 'border border-cyan-400/50 bg-slate-950/20 [box-shadow:0_0_8px_rgba(34,211,238,0.3)]'
+              ? 'border border-yellow-200 bg-amber-300/15 [box-shadow:0_0_12px_rgba(253,224,71,0.85)]'
+              : 'border border-amber-300/90 bg-slate-950/20 [box-shadow:0_0_8px_rgba(251,191,36,0.55)]'
           }`}
           style={{
             width: `${ringSize}px`,
@@ -83,8 +83,8 @@ export const HandIndicator: React.FC<HandIndicatorProps> = ({
               isPinching
                 ? 'bg-emerald-300 [box-shadow:0_0_6px_rgba(110,231,183,1)]'
                 : isOverOrb
-                ? 'bg-cyan-200 [box-shadow:0_0_5px_rgba(165,243,252,1)]'
-                : 'bg-cyan-400/80'
+                ? 'bg-yellow-100 [box-shadow:0_0_5px_rgba(254,249,195,1)]'
+                : 'bg-amber-300 [box-shadow:0_0_6px_rgba(252,211,77,0.95)]'
             }`}
           />
         </div>
@@ -96,7 +96,7 @@ export const HandIndicator: React.FC<HandIndicatorProps> = ({
               className={`px-2 py-0.5 rounded text-[9px] font-mono tracking-widest uppercase transition-all duration-200 ${
                 isPinching
                   ? 'bg-emerald-950/80 text-emerald-200 border border-emerald-400/40'
-                  : 'bg-slate-950/70 text-cyan-200 border border-cyan-400/30'
+                  : 'bg-slate-950/70 text-amber-100 border border-amber-300/40'
               }`}
             >
               {isPinching ? 'RELEASE TO EXPAND' : 'PINCH TO SELECT'}
@@ -113,15 +113,15 @@ export const HandIndicator: React.FC<HandIndicatorProps> = ({
           <div
             className="relative flex h-14 w-14 items-center justify-center rounded-full"
             style={{
-              background: `conic-gradient(rgba(103,232,249,0.95) ${twoHandsDwellProgress * 360}deg, rgba(103,232,249,0.16) 0deg)`,
-              filter: 'drop-shadow(0 0 10px rgba(34,211,238,0.35))',
+              background: `conic-gradient(rgba(253,224,71,0.98) ${twoHandsDwellProgress * 360}deg, rgba(251,191,36,0.18) 0deg)`,
+              filter: 'drop-shadow(0 0 10px rgba(251,191,36,0.4))',
             }}
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-200/20 bg-slate-950/90 text-[11px] font-mono-display text-cyan-100">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-amber-200/25 bg-slate-950/90 text-[11px] font-mono-display text-amber-100">
               {(remaining).toFixed(1)}s
             </div>
           </div>
-          <span className="whitespace-nowrap rounded-full border border-cyan-300/20 bg-slate-950/85 px-2.5 py-1 text-[9px] font-mono-display tracking-wider text-cyan-100 shadow-lg">
+          <span className="whitespace-nowrap rounded-full border border-amber-300/30 bg-slate-950/85 px-2.5 py-1 text-[9px] font-mono-display tracking-wider text-amber-100 shadow-lg">
             KEEP HOLDING · RETURN TO ORB
           </span>
         </div>
