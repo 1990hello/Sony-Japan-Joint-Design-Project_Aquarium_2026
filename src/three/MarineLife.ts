@@ -32,6 +32,7 @@ export interface FishEntity {
   // Level 2 Click-to-Select & 10-Second Follow System
   isSelected: boolean;
   isBeingDragged: boolean;
+  dragPreviousPos: THREE.Vector3;
   followTimer: number; // Elapsed time in seconds since click (0 to 14.0s)
   cursorTarget: THREE.Vector3; // 3D world position of cursor
   departureTarget: THREE.Vector3; // Waypoint picked at 10.0s for unhurried departure
@@ -480,6 +481,7 @@ export class MarineLife {
         personality,
         isSelected: false,
         isBeingDragged: false,
+        dragPreviousPos: new THREE.Vector3().copy(initialPos),
         followTimer: 0,
         cursorTarget: new THREE.Vector3().copy(initialPos),
         departureTarget: new THREE.Vector3(),
@@ -988,7 +990,6 @@ export class MarineLife {
     fish.group.position.copy(fish.pos);
     fish.target.copy(fish.pos);
     fish.cursorTarget.copy(fish.pos);
-    fish.vel.set(0, 0, 0);
   }
 
   public updateCursorInteraction(
@@ -1055,14 +1056,38 @@ export class MarineLife {
         boundsZ = { min: -5.0, max: 3.2 };
       }
 
-      // While held by mouse or touch, the fish follows the pointer directly.
-      // Its normal follow behaviour resumes after the user releases it.
+      // While held, the fish follows the pointer directly but keeps swimming.
+      // Sample its movement to orient the body, animate the tail and leave a musical trail.
       if (fish.isBeingDragged) {
         fish.target.copy(fish.pos);
         fish.cursorTarget.copy(fish.pos);
-        fish.vel.set(0, 0, 0);
-        fish.swimCycle += delta * 0.7;
-        fish.tailMesh.rotation.y = Math.sin(fish.swimCycle) * 0.22;
+
+        fish.vel.subVectors(fish.pos, fish.dragPreviousPos)
+          .divideScalar(Math.max(delta, 0.001))
+          .clampLength(0, fish.normalSpeed * 3.0);
+        fish.dragPreviousPos.copy(fish.pos);
+
+        if (fish.vel.lengthSq() > 0.0001) {
+          const lookTarget = new THREE.Vector3().addVectors(fish.pos, fish.vel);
+          const currentRot = fish.group.rotation.clone();
+          fish.group.lookAt(lookTarget);
+          fish.group.rotation.z = THREE.MathUtils.clamp(-fish.vel.x * 0.22, -0.25, 0.25);
+          fish.group.rotation.y = THREE.MathUtils.damp(currentRot.y, fish.group.rotation.y, 1.6, delta);
+
+          // Continue the selected fish's musical trail while it is being moved.
+          fish.noteTimer += delta;
+          if (fish.noteTimer >= 0.38) {
+            fish.noteTimer = 0;
+            this.spawnMusicalNote(fish.pos, fish.vel);
+            soundEngine.playFishNote(this.noteSequenceIndex++);
+          }
+        } else {
+          fish.noteTimer = 0;
+        }
+
+        const dragWaggleRate = Math.max(1.0, fish.vel.length() * 3.0);
+        fish.swimCycle += delta * dragWaggleRate;
+        fish.tailMesh.rotation.y = Math.sin(fish.swimCycle) * 0.28;
         fish.group.position.copy(fish.pos);
         continue;
       }
