@@ -31,8 +31,16 @@ export const HandIndicator: React.FC<HandIndicatorProps> = ({
   const ringSize = Math.max(12, Math.round(28 - pinchProgress * 16));
 
   const showReturnProgress = isTwoHandsDetected && twoHandsDwellProgress > 0.01 && !!secondHandLandmarks?.[0] && !!gestureState.allLandmarks?.[0];
-  const firstPalm = gestureState.allLandmarks?.[0];
-  const secondPalm = secondHandLandmarks?.[0];
+  const firstWrist = gestureState.allLandmarks?.[0];
+  const firstPalmBase = gestureState.allLandmarks?.[9];
+  const secondWrist = secondHandLandmarks?.[0];
+  const secondPalmBase = secondHandLandmarks?.[9];
+  const firstPalm = firstWrist && firstPalmBase
+    ? { x: (firstWrist.x + firstPalmBase.x) / 2, y: (firstWrist.y + firstPalmBase.y) / 2 }
+    : null;
+  const secondPalm = secondWrist && secondPalmBase
+    ? { x: (secondWrist.x + secondPalmBase.x) / 2, y: (secondWrist.y + secondPalmBase.y) / 2 }
+    : null;
   const midpoint = firstPalm && secondPalm
     ? { x: (firstPalm.x + secondPalm.x) / 2, y: (firstPalm.y + secondPalm.y) / 2 }
     : { x: 0.5, y: 0.5 };
