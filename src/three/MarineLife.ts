@@ -20,6 +20,8 @@ export interface FishEntity {
   accentMesh: THREE.Mesh;
   hitProxyMesh?: THREE.Mesh;
   pos: THREE.Vector3;
+  homePos: THREE.Vector3;
+  baseScale: number;
   vel: THREE.Vector3;
   target: THREE.Vector3;
   speed: number;
@@ -56,6 +58,8 @@ interface JellyfishEntity {
   tentacleNodes: THREE.Vector3[][];
   pulsePhase: number;
   pulseSpeed: number;
+  homePos: THREE.Vector3;
+  baseScale: number;
   driftDir: THREE.Vector3;
   baseY: number;
   spawnBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -68,6 +72,8 @@ interface BubbleEntity {
   wobbleAmt: number;
   phase: number;
   popped: boolean;
+  homePos: THREE.Vector3;
+  baseScale: number;
   minY: number;
   maxY: number;
   spawnBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -595,6 +601,8 @@ export class MarineLife {
         accentMesh,
         hitProxyMesh,
         pos: initialPos,
+        homePos: initialPos.clone(),
+        baseScale: scale,
         vel: new THREE.Vector3((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.04, (Math.random() - 0.5) * 0.12),
         target: new THREE.Vector3().copy(initialPos),
         speed: baseSpeed,
@@ -728,6 +736,8 @@ export class MarineLife {
         tentacleNodes,
         pulsePhase: i * 1.8,
         pulseSpeed: 1.2 + Math.random() * 0.4,
+        homePos: jellyGroup.position.clone(),
+        baseScale: jellyScale,
         driftDir: new THREE.Vector3((Math.random() - 0.5) * 0.08, 0.1, (Math.random() - 0.5) * 0.05),
         baseY: initialPlacements[i].y,
         spawnBounds: windowSideBounds,
@@ -778,6 +788,8 @@ export class MarineLife {
         wobbleAmt: 0.04 + Math.random() * 0.03,
         phase: Math.random() * Math.PI * 2,
         popped: false,
+        homePos: mesh.position.clone(),
+        baseScale: scale,
         minY: 0.1,
         maxY: 4.8,
         spawnBounds,
@@ -932,16 +944,32 @@ export class MarineLife {
       // STATE 1 — INITIAL_ORB: Completely clean room, zero fish, zero bubbles, zero jellyfish outside the orb
       this.fishList.forEach((fish) => {
         fish.group.visible = false;
-        if (fish.isEmergentFish) {
-          fish.pos.set(0, 0.95, 0.4);
-          fish.target.set(0, 0.95, 0.4);
-          fish.group.position.set(0, 0.95, 0.4);
-        }
+        // Restore each fish to its original spawn position and size after the collapse animation.
+        fish.pos.copy(fish.homePos);
+        fish.target.copy(fish.homePos);
+        fish.group.position.copy(fish.homePos);
+        fish.group.scale.setScalar(fish.baseScale);
+        fish.vel.set(0, 0, 0);
+        fish.isSelected = false;
+        fish.isBeingDragged = false;
+        fish.followTimer = 0;
+        fish.departureInitialized = false;
+        fish.pauseTimer = 0;
+        fish.dragPreviousPos.copy(fish.homePos);
+        fish.dragSmoothedVelocity.set(0, 0, 0);
+        fish.cursorTarget.copy(fish.homePos);
       });
       this.jellyfishList.forEach((jelly) => {
         jelly.group.visible = false;
+        jelly.group.position.copy(jelly.homePos);
+        jelly.group.scale.setScalar(jelly.baseScale);
       });
       this.bubbleMeshGroup.visible = false;
+      this.bubbleList.forEach((bubble) => {
+        bubble.mesh.position.copy(bubble.homePos);
+        bubble.mesh.scale.setScalar(bubble.baseScale);
+        bubble.popped = false;
+      });
       this.leviathanGroup.visible = false;
       this.roomPermeability = 0;
     } else if (moment === 2) {
@@ -1046,6 +1074,8 @@ export class MarineLife {
         bubble.mesh.position.z = bubble.spawnBounds.minZ + Math.random() * (bubble.spawnBounds.maxZ - bubble.spawnBounds.minZ);
         const scale = 0.85 + Math.random() * 0.95;
         bubble.mesh.scale.set(scale, scale, scale);
+        bubble.baseScale = scale;
+        bubble.homePos.copy(bubble.mesh.position);
         bubble.popped = false;
       }, 1200);
       return true;
